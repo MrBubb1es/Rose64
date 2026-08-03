@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rose-app",
+    "crates/rose-cli",
+    "crates/rose-core",
+    # "crates/rose-desktop",
+    # "crates/rose-web",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Lance Preston <lance04preston@gmail.com>", "Logan Preston <lpreston618@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/MrBubb1es/Rose64"
+
+[workspace.dependencies]
+rose-core = { path = "crates/rose-core" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[profile.dev-opt]
+inherits = "dev"
+opt-level = 2

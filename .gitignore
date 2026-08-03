@@ -1,0 +1,14 @@
+/target/
+/scratch/
+*.z64
+*.n64
+*.v64
+.vscode/
+.idea/
+.zed/
+*.swp
+.DS_Store
+
+# Local save states / battery saves generated while testing
+*.sav
+*.state

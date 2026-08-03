@@ -1,0 +1,15 @@
+[package]
+name = "rose-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Headless runner: loads a ROM, runs N cycles/frames, and dumps
+# framebuffer hashes / register state.
+[dependencies]
+rose-core = { workspace = true }
+
+[[bin]]
+name = "rose-cli"
+path = "src/main.rs"

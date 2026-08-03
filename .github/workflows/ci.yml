@@ -1,0 +1,71 @@
+name: CI
+
+# Runs on every push and PR. main should always show green here — this
+# is the gate that "PR per branch" workflow relies on.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy (deny warnings)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Build & test (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          # - os: ubuntu-latest
+          #   target: wasm32-unknown-unknown
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --workspace --verbose --target ${{ matrix.target }}
+      # wasm32-unknown-unknown has no native test runner, so `cargo test`
+      # doesn't work here without extra tooling (wasm-bindgen-test, etc).
+      # Skip it for now; revisit if/when we add WASM-specific tests.
+      # - if: matrix.target != 'wasm32-unknown-unknown'
+      #   run: cargo test --workspace --verbose --target ${{ matrix.target }}
+
+  # Once test-roms/ has real content and n64-cli can run them, add a
+  # job here that runs `cargo run -p n64-cli -- run test-roms/*.z64`
+  # and fails the build on a hash mismatch against checked-in
+  # known-good results. This is your regression safety net.
