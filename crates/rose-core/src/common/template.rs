@@ -12,7 +12,7 @@ use crate::common::types::*;
 const DESCRIPTIVE_NAME: U16 = n!(0x148E);
 
 /// A brief description of the struct
-/// 
+///
 /// # Section
 /// Details about what the struct does, why it exists, how it is used, etc.
 struct MyStruct {
@@ -22,9 +22,7 @@ struct MyStruct {
 
 impl MyStruct {
     pub fn new() -> MyStruct {
-        MyStruct {
-            field: todo!(),
-        }
+        MyStruct { field: todo!() }
     }
 
     /// Adds `value` to `self.field`.
