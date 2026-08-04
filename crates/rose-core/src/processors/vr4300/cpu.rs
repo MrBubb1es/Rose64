@@ -1,13 +1,13 @@
 //! -----------------------------------------------------------------------
-//! vr4300/mod.rs: Main CPU interpreter implementation
+//! vr4300/cpu.rs: Main CPU interpreter implementation
 //!
 //! A basic implementation of the N64's main CPU. This is a cycle-accurate
 //! interpreter implementation: slow, but correct.
 //!
-//! Author(s): Logan Preston, MrBubblezsz
+//! Author(s): logocrazymon, MrBubblezsz
 //! -----------------------------------------------------------------------
 
-use crate::processors::vr4300::CpuException::IntegerOverflow;
+use crate::processors::vr4300::{CpuException::IntegerOverflow, RegSize::Reg32};
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
@@ -127,6 +127,7 @@ pub enum RegSize {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CpuException {
     IntegerOverflow,
+    ReservedInstruction,
 }
 
 impl CpuVR4300 {
@@ -279,8 +280,36 @@ impl CpuVR4300 {
                 }
                 42 => {} // SLT
                 43 => {} // SLTU
-                44 => {} // DADD
-                45 => {} // DADDU
+                44 => {
+                    // DADD
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rs = self.regs[instr.rs as usize] as i64;
+                            let rt = self.regs[instr.rt as usize] as i64;
+                            let (result, overflow) = rs.overflowing_add(rt);
+                            if overflow {
+                                self.raise_exception(CpuException::IntegerOverflow);
+                            } else {
+                                self.regs[instr.rd as usize] = result as u64;
+                            }
+                        }
+                    }
+                }
+                45 => {
+                    // DADDU
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rs = self.regs[instr.rs as usize];
+                            let rt = self.regs[instr.rt as usize];
+                            let result = rs.wrapping_add(rt);
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
                 46 => {} // DSUB
                 47 => {} // DSUBU
                 48 => {} // TGE
@@ -390,8 +419,36 @@ impl CpuVR4300 {
             21 => {} // BNEL
             22 => {} // BLEZL
             23 => {} // BGTZL
-            24 => {} // DADDI
-            25 => {} // DADDIU
+            24 => {
+                // DADDI
+                match self.reg_size {
+                    RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                    RegSize::Reg64 => {
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.regs[instr.rs as usize] as i64;
+                        let immediate = (instr.immediate as i16) as i64;
+                        let (result, overflow) = rs.overflowing_add(immediate);
+                        if overflow {
+                            self.raise_exception(CpuException::IntegerOverflow);
+                        } else {
+                            self.regs[instr.rt as usize] = result as u64;
+                        }
+                    }
+                }
+            }
+            25 => {
+                // DADDIU
+                match self.reg_size {
+                    RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                    RegSize::Reg64 => {
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.regs[instr.rs as usize];
+                        let immediate = (instr.immediate as i16) as u64;
+                        let result = rs.wrapping_add(immediate);
+                        self.regs[instr.rt as usize] = result;
+                    }
+                }
+            }
             26 => {} // LDL
             27 => {} // LDR
             32 => {} // LB
