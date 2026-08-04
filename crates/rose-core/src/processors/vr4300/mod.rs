@@ -10,16 +10,16 @@
 use crate::processors::vr4300::CpuException::IntegerOverflow;
 
 pub struct CpuVR4300 {
-    regs: [u64; 32],
-    fp_regs: [f64; 32],
-    pc: u64,
-    mult_hi: u64,
-    mult_lo: u64,
-    fp_revision: f32,
-    fp_control: f32,
-    llbit: bool,
-    reg_size: RegSize,
-    last_exception: Option<CpuException>,
+    pub regs: [u64; 32],
+    pub fp_regs: [f64; 32],
+    pub pc: u64,
+    pub mult_hi: u64,
+    pub mult_lo: u64,
+    pub fp_revision: f32,
+    pub fp_control: f32,
+    pub llbit: bool,
+    pub reg_size: RegSize,
+    pub last_exception: Option<CpuException>,
 }
 
 /// Data for an I-type opcode. Fields rs and rt are only 5 bits each, but will
@@ -31,9 +31,45 @@ struct ITypeInstruction {
     immediate: u16,
 }
 
+impl ITypeInstruction {
+    /// Take in a 32-bit I-type opcode and return a tuple of its component parts.
+    ///
+    /// +-----------------+-------+-------+----------------+
+    /// | opcode (6 bits) | rs(5) | rt(5) | immediate (16) |
+    /// +-----------------+-------+-------+----------------+
+    ///
+    /// Argument: the instruction (u32)
+    /// Return: ITypeInstruction struct with separated fields
+    fn from_raw(i: u32) -> ITypeInstruction {
+        ITypeInstruction {
+            opcode: (i >> 26) as u8,
+            rs: ((i >> 21) & 0x1F) as u8,
+            rt: ((i >> 16) & 0x1F) as u8,
+            immediate: i as u16,
+        }
+    }
+}
+
 struct JTypeInstruction {
     opcode: u8,
     target: u32,
+}
+
+impl JTypeInstruction {
+    /// Take in a 32-bit I-type opcode and return a tuple of its component parts.
+    ///
+    /// +-----------------+------------------------------------+
+    /// | opcode (6 bits) |          target (26 bits)          |
+    /// +-----------------+------------------------------------+
+    ///
+    /// Argument: The instruction (u32)
+    /// Returns: JTypeInstruction struct with separated fields
+    fn from_raw(i: u32) -> JTypeInstruction {
+        JTypeInstruction {
+            opcode: (i >> 26) as u8,
+            target: i & 0x3FFFFFF,
+        }
+    }
 }
 
 struct RTypeInstruction {
@@ -45,66 +81,36 @@ struct RTypeInstruction {
     funct: u8,
 }
 
-#[derive(Debug)]
-enum RegSize {
+impl RTypeInstruction {
+    /// Take in a 32-bit I-type opcode and return a tuple of its component parts.
+    ///
+    /// +-----------------+-------+-------+-------+-------+----------+
+    /// | opcode (6 bits) | rs(5) | rt(5) | rd(5) | sa(5) | funct(6) |
+    /// +-----------------+-------+-------+-------+-------+----------+
+    ///
+    /// Argument: The instruction (u32)
+    /// Returns: RTypeInstruction struct with separated fields
+    fn from_raw(i: u32) -> RTypeInstruction {
+        RTypeInstruction {
+            opcode: (i >> 26) as u8,
+            rs: ((i >> 21) & 0x1F) as u8,
+            rt: ((i >> 16) & 0x1F) as u8,
+            rd: ((i >> 11) & 0x1F) as u8,
+            shift: ((i >> 6) & 0x1F) as u8,
+            funct: (i & 0x3F) as u8,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RegSize {
     Reg32,
     Reg64,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum CpuException {
+pub enum CpuException {
     IntegerOverflow,
-}
-
-/// Take in a 32-bit I-type opcode and return a tuple of its component parts.
-///
-/// +-----------------+-------+-------+----------------+
-/// | opcode (6 bits) | rs(5) | rt(5) | immediate (16) |
-/// +-----------------+-------+-------+----------------+
-///
-/// Argument: the instruction (u32)
-/// Return: ITypeInstruction struct with separated fields
-fn parse_i_type_instruction(i: u32) -> ITypeInstruction {
-    ITypeInstruction {
-        opcode: (i >> 26) as u8,
-        rs: ((i >> 21) & 0x1F) as u8,
-        rt: ((i >> 16) & 0x1F) as u8,
-        immediate: i as u16,
-    }
-}
-
-/// Take in a 32-bit I-type opcode and return a tuple of its component parts.
-///
-/// +-----------------+------------------------------------+
-/// | opcode (6 bits) |          target (26 bits)          |
-/// +-----------------+------------------------------------+
-///
-/// Argument: The instruction (u32)
-/// Returns: JTypeInstruction struct with separated fields
-fn parse_j_type_instruction(i: u32) -> JTypeInstruction {
-    JTypeInstruction {
-        opcode: (i >> 26) as u8,
-        target: i & 0x3FFFFFF,
-    }
-}
-
-/// Take in a 32-bit I-type opcode and return a tuple of its component parts.
-///
-/// +-----------------+-------+-------+-------+-------+----------+
-/// | opcode (6 bits) | rs(5) | rt(5) | rd(5) | sa(5) | funct(6) |
-/// +-----------------+-------+-------+-------+-------+----------+
-///
-/// Argument: The instruction (u32)
-/// Returns: RTypeInstruction struct with separated fields
-fn parse_r_type_instruction(i: u32) -> RTypeInstruction {
-    RTypeInstruction {
-        opcode: (i >> 26) as u8,
-        rs: ((i >> 21) & 0x1F) as u8,
-        rt: ((i >> 16) & 0x1F) as u8,
-        rd: ((i >> 11) & 0x1F) as u8,
-        shift: ((i >> 6) & 0x1F) as u8,
-        funct: (i & 0x3F) as u8,
-    }
 }
 
 impl CpuVR4300 {
@@ -155,44 +161,36 @@ impl CpuVR4300 {
                 31 => {} // DDIVU
                 32 => {
                     // ADD
-                    let instr = parse_r_type_instruction(i);
-                    let (result, overflow) = match self.reg_size {
-                        RegSize::Reg32 => {
-                            let rs = self.regs[instr.rs as usize] as i32;
-                            let rt = self.regs[instr.rt as usize] as i32;
-                            let (sum, overflow) = rs.overflowing_add(rt);
-                            ((sum as u32) as u64, overflow)
-                        }
-                        RegSize::Reg64 => {
-                            let rt = self.regs[instr.rt as usize] as i64;
-                            let rs = self.regs[instr.rs as usize] as i64;
-                            let (sum, overflow) = rs.overflowing_add(rt);
-                            (sum as u64, overflow)
-                        }
+                    let instr = RTypeInstruction::from_raw(i);
+
+                    let rs = self.regs[instr.rs as usize] as i32;
+                    let rt = self.regs[instr.rt as usize] as i32;
+                    let (sum, overflow) = rs.overflowing_add(rt);
+
+                    let result = match self.reg_size {
+                        RegSize::Reg32 => (sum as u32) as u64,
+                        RegSize::Reg64 => (sum as i64) as u64,
                     };
+
                     if overflow {
-                        self.raise_exception(CpuException::IntegerOverflow); // dummy val
+                        self.raise_exception(CpuException::IntegerOverflow);
                     } else {
                         self.regs[instr.rd as usize] = result;
                     }
                 }
                 33 => {
                     // ADDU
-                    let instr = parse_r_type_instruction(i);
+                   let instr = RTypeInstruction::from_raw(i);
+
+                    let rs = self.regs[instr.rs as usize] as i32;
+                    let rt = self.regs[instr.rt as usize] as i32;
+                    let sum = rs.wrapping_add(rt);
+
                     let result = match self.reg_size {
-                        RegSize::Reg32 => {
-                            let rs = self.regs[instr.rs as usize] as u32;
-                            let rt = self.regs[instr.rt as usize] as u32;
-                            let sum = rs.wrapping_add(rt);
-                            (sum as u32) as u64
-                        }
-                        RegSize::Reg64 => {
-                            let rt = self.regs[instr.rt as usize];
-                            let rs = self.regs[instr.rs as usize];
-                            let sum = rs.wrapping_add(rt);
-                            sum as u64
-                        }
+                        RegSize::Reg32 => (sum as u32) as u64,
+                        RegSize::Reg64 => (sum as i64) as u64,
                     };
+
                     self.regs[instr.rd as usize] = result;
                 }
                 34 => {} // SUB
@@ -230,44 +228,36 @@ impl CpuVR4300 {
             7 => {} // BGTZ
             8 => {
                 // ADDI
-                let instr = parse_i_type_instruction(i);
-                let (result, overflow) = match self.reg_size {
-                    RegSize::Reg32 => {
-                        let rs = self.regs[instr.rs as usize] as i32;
-                        let immediate = (instr.immediate as i16) as i32;
-                        let (sum, overflow) = rs.overflowing_add(immediate);
-                        ((sum as u32) as u64, overflow)
-                    }
-                    RegSize::Reg64 => {
-                        let rs = self.regs[instr.rs as usize] as i64;
-                        let immediate = (instr.immediate as i16) as i64;
-                        let (sum, overflow) = rs.overflowing_add(immediate);
-                        (sum as u64, overflow)
-                    }
+                let instr = ITypeInstruction::from_raw(i);
+
+                let rs = self.regs[instr.rs as usize] as i32;
+                let immediate = (instr.immediate as i16) as i32;
+                let (sum, overflow) = rs.overflowing_add(immediate);
+
+                let result = match self.reg_size {
+                    RegSize::Reg32 => (sum as u32) as u64,
+                    RegSize::Reg64 => (sum as i64) as u64,
                 };
+
                 if overflow {
-                    self.raise_exception(IntegerOverflow); // dummy val
+                    self.raise_exception(IntegerOverflow);
                 } else {
                     self.regs[instr.rt as usize] = result;
                 }
             }
             9 => {
                 // ADDIU
-                let instr = parse_i_type_instruction(i);
+                let instr = ITypeInstruction::from_raw(i);
+
+                let rs = self.regs[instr.rs as usize] as i32;
+                let immediate = (instr.immediate as i16) as i32;
+                let sum = rs.wrapping_add(immediate);
+
                 let result = match self.reg_size {
-                    RegSize::Reg32 => {
-                        let rs = self.regs[instr.rs as usize] as u32;
-                        let immediate = (instr.immediate as i16) as u32;
-                        let sum = rs.wrapping_add(immediate);
-                        (sum as u32) as u64
-                    }
-                    RegSize::Reg64 => {
-                        let rs = self.regs[instr.rs as usize];
-                        let immediate = (instr.immediate as i16) as u64;
-                        let sum = rs.wrapping_add(immediate);
-                        sum as u64
-                    }
+                    RegSize::Reg32 => (sum as u32) as u64,
+                    RegSize::Reg64 => (sum as i64) as u64,
                 };
+
                 self.regs[instr.rt as usize] = result;
             }
             10 => {} // SLTI
