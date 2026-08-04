@@ -161,8 +161,8 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.regs[instr.rt as usize];
                     let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
                     let result = ((rt << instr.shift) as i32) as u64;
                     self.regs[instr.rd as usize] &= !mask;
@@ -173,8 +173,8 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.regs[instr.rt as usize];
                     let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
                     let result = ((rt >> instr.shift) as i32) as u64;
                     self.regs[instr.rd as usize] &= !mask;
@@ -186,8 +186,8 @@ impl CpuVR4300 {
                     // Cast down to signed for arithmetic shift
                     let rt = self.regs[instr.rt as usize] as i32;
                     let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
                     let result = (rt >> instr.shift) as u64;
                     self.regs[instr.rd as usize] &= !mask;
@@ -197,10 +197,10 @@ impl CpuVR4300 {
                     // SLLV
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.regs[instr.rt as usize];
-                    let shift = self.regs[instr.rs as usize] & 0x3F;
+                    let shift = self.regs[instr.rs as usize] & 0x1F;
                     let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
                     let result = ((rt << shift) as i32) as u64;
                     self.regs[instr.rd as usize] &= !mask;
@@ -210,10 +210,10 @@ impl CpuVR4300 {
                     // SRLV
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.regs[instr.rt as usize];
-                    let shift = self.regs[instr.rs as usize] & 0x3F;
+                    let shift = self.regs[instr.rs as usize] & 0x1F;
                     let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
                     let result = ((rt >> shift) as i32) as u64;
                     self.regs[instr.rd as usize] &= !mask;
@@ -224,10 +224,10 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     // Cast down to signed for arithmetic shift
                     let rt = self.regs[instr.rt as usize] as i32;
-                    let shift = self.regs[instr.rs as usize] & 0x3F;
+                    let shift = self.regs[instr.rs as usize] & 0x1F;
                     let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
                     let result = (rt >> shift) as u64;
                     self.regs[instr.rd as usize] &= !mask;
@@ -601,15 +601,16 @@ impl CpuVR4300 {
                 let immediate = (instr.immediate as i16) as i32;
                 let (sum, overflow) = rs.overflowing_add(immediate);
 
-                let result = match self.reg_size {
-                    RegSize::Reg32 => (sum as u32) as u64,
-                    RegSize::Reg64 => (sum as i64) as u64,
+                let mask = match self.reg_size {
+                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                 };
 
                 if overflow {
                     self.raise_exception(IntegerOverflow);
                 } else {
-                    self.regs[instr.rt as usize] = result;
+                    self.regs[instr.rt as usize] &= !mask;
+                    self.regs[instr.rt as usize] |= sum as u64 & mask;
                 }
             }
             9 => {
