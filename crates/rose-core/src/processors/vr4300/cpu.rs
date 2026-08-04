@@ -222,56 +222,60 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
 
                     let mask = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
                         RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
 
                     let result =
                         (self.regs[instr.rt as usize] & self.regs[instr.rs as usize]) & mask;
 
-                    self.regs[instr.rd as usize] = result;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result;
                 }
                 37 => {
                     // OR
                     let instr = RTypeInstruction::from_raw(i);
 
                     let mask = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
                         RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
 
                     let result =
                         (self.regs[instr.rt as usize] | self.regs[instr.rs as usize]) & mask;
 
-                    self.regs[instr.rd as usize] = result;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result;
                 }
                 38 => {
                     // XOR
                     let instr = RTypeInstruction::from_raw(i);
 
                     let mask = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
                         RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
 
                     let result =
                         (self.regs[instr.rt as usize] ^ self.regs[instr.rs as usize]) & mask;
 
-                    self.regs[instr.rd as usize] = result;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result;
                 }
                 39 => {
                     // NOR
                     let instr = RTypeInstruction::from_raw(i);
 
                     let mask = match self.reg_size {
-                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
                         RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
 
                     let result =
                         (!(self.regs[instr.rt as usize] | self.regs[instr.rs as usize])) & mask;
 
-                    self.regs[instr.rd as usize] = result;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result;
                 }
                 42 => {} // SLT
                 43 => {} // SLTU
@@ -336,9 +340,48 @@ impl CpuVR4300 {
             }
             10 => {} // SLTI
             11 => {} // SLTIU
-            12 => {} // ANDI
-            13 => {} // ORI
-            14 => {} // XORI
+            12 => {
+                // ANDI
+                let instr = ITypeInstruction::from_raw(i);
+
+                let mask = match self.reg_size {
+                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
+                };
+
+                let result = (instr.immediate as u64 & self.regs[instr.rs as usize]) & mask;
+
+                self.regs[instr.rt as usize] &= !mask;
+                self.regs[instr.rt as usize] |= result;
+            }
+            13 => {
+                // ORI
+                let instr = ITypeInstruction::from_raw(i);
+
+                let mask = match self.reg_size {
+                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
+                };
+
+                let result = (instr.immediate as u64 | self.regs[instr.rs as usize]) & mask;
+
+                self.regs[instr.rt as usize] &= !mask;
+                self.regs[instr.rt as usize] |= result;
+            }
+            14 => {
+                // XORI
+                let instr = ITypeInstruction::from_raw(i);
+
+                let mask = match self.reg_size {
+                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
+                };
+
+                let result = (instr.immediate as u64 ^ self.regs[instr.rs as usize]) & mask;
+
+                self.regs[instr.rt as usize] &= !mask;
+                self.regs[instr.rt as usize] |= result;
+            }
             15 => {} // LUI
             16 => {} // COP0
             17 => {} // COP1
