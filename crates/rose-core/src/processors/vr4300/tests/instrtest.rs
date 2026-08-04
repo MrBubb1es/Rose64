@@ -1613,4 +1613,380 @@ mod instrtest {
             RegSize::Reg64,
         );
     }
+
+    /// Test the SLL instruction.
+    ///
+    /// # SLL:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rt] << sa
+    /// - 64-bit:
+    ///   - temp    <- GPR[rt] << sa
+    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_sll() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b000000;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for SLL
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // Regular shift
+        let sa = 15;
+        let rt_in_32: u32 = 0x81234567;
+        let rd_out_32: u32 = rt_in_32 << sa;
+
+        let rt_in_64: u64 = 0xFFFFFFFF_81234567;
+        let rd_out_64: u64 = sign_extend_u64::<32>((rt_in_64 & 0xFFFFFFFF) << sa);
+
+        test_rtype_instr(
+            "SLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_32 as u64,
+            rd_in,
+            rd_out_32 as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        let sa = 0;
+        let rt_in_32: u32 = 0x80000000;
+        let rd_out_32: u64 = rt_in_32 as u64;
+
+        let rt_in_64: u64 = 0x00000000_80000000;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rt_in_64);
+
+        test_rtype_instr(
+            "SLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_32 as u64,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the SLLV instruction.
+    ///
+    /// # SLLV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rt] << (GPR[rs] & 31)
+    /// - 64-bit:
+    ///   - temp    <- GPR[rt] << (GPR[rs] & 31)
+    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_sllv() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b000100;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let sa: u32 = 0; // unused for SLLV
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // Regular shift
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in_32: u32 = 0x81234567;
+        let rd_out_32: u32 = rt_in_32 << (rs_in & 31);
+
+        let rt_in_64: u64 = 0xFFFFFFFF_81234567;
+        let rd_out_64: u64 = sign_extend_u64::<32>((rt_in_64 & 0xFFFFFFFF) << (rs_in & 31));
+
+        test_rtype_instr(
+            "SLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_32 as u64,
+            rd_in,
+            rd_out_32 as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        let rs_in: u64 = 0x00000000_00000000;
+        let rt_in_32: u32 = 0x80000000;
+        let rd_out_32: u64 = rt_in_32 as u64;
+
+        let rt_in_64: u64 = 0x00000000_80000000;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rt_in_64);
+
+        test_rtype_instr(
+            "SLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_32 as u64,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in_64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSLL instruction.
+    ///
+    /// # DSLL:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rt] << sa
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsll() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b111000;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for SLL
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let sa = 15;
+        let rt_in: u64 = 0xFFFFFFFF_81234567;
+        let rd_out: u64 = sign_extend_u64::<32>((rt_in & 0xFFFFFFFF) << sa);
+
+        test_rtype_instr(
+            "DSLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        let sa = 0;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = sign_extend_u64::<32>(rt_in);
+
+        test_rtype_instr(
+            "DSLL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSLLV instruction.
+    ///
+    /// # DSLLV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rt] << (GPR[rs] & 31)
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsllv() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b010100;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let sa: u32 = 0; // unused for SLLV
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0xFFFFFFFF_81234567;
+        let rd_out: u64 = sign_extend_u64::<32>((rt_in & 0xFFFFFFFF) << (rs_in & 31));
+
+        test_rtype_instr(
+            "DSLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        let rs_in: u64 = 0x00000000_00000000;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = sign_extend_u64::<32>(rt_in);
+
+        test_rtype_instr(
+            "DSLLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
 }
