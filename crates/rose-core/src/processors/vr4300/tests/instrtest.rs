@@ -934,7 +934,7 @@ mod instrtest {
     ///   - GPR[rd] <- GPR[rs] + GPR[rt]
     /// ## Exceptions:
     /// - Integer Overflow
-    /// - Reserved Instruction Exception
+    /// - Reserved Instruction
     #[test]
     fn test_dadd() {
         const OP: u32 = 0b000000;
@@ -1018,7 +1018,7 @@ mod instrtest {
     ///   - GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)
     /// ## Exceptions:
     /// - Integer Overflow
-    /// - Reserved Instruction Exception
+    /// - Reserved Instruction
     #[test]
     fn test_daddi() {
         const OP: u32 = 0b011000;
@@ -1091,7 +1091,7 @@ mod instrtest {
     /// - 64-bit:
     ///   - GPR[rd] <- GPR[rs] + GPR[rt]
     /// ## Exceptions:
-    /// - Reserved Instruction Exception
+    /// - Reserved Instruction
     #[test]
     fn test_daddu() {
         const OP: u32 = 0b000000;
@@ -1174,7 +1174,7 @@ mod instrtest {
     /// - 64-bit:
     ///   - GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)
     /// ## Exceptions:
-    /// - Reserved Instruction Exception
+    /// - Reserved Instruction
     #[test]
     fn test_daddiu() {
         const OP: u32 = 0b011001;
@@ -1231,6 +1231,384 @@ mod instrtest {
             rt_in,
             immediate,
             rt_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the SUB instruction.
+    ///
+    /// # SUB:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    /// - 64-bit:
+    ///   - temp    <- GPR[rs] + GPR[rt]
+    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    /// ## Exceptions:
+    /// - Integer Overflow
+    #[test]
+    fn test_sub() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100010;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // No overflow
+        let rs_in_32: i32 = 99;
+        let rt_in_32: i32 = 10;
+        let rd_out_32: i32 = rs_in_32 - rt_in_32;
+
+        let rs_in_64: i32 = 5002;
+        let rt_in_64: i32 = 963;
+        let rd_out_64: u64 = sign_extend_u64::<32>((rs_in_64 - rt_in_64) as u64);
+
+        test_rtype_instr(
+            "SUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_32 as i64) as u64,
+            (rt_in_32 as i64) as u64,
+            rd_in,
+            (rd_out_32 as u32) as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_64 as i64) as u64,
+            (rt_in_64 as i64) as u64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (output register unchanged)
+        let rs_in_32: i32 = i32::MIN;
+        let rt_in_32: i32 = 1;
+
+        let rs_in_64: i32 = i32::MIN;
+        let rt_in_64: i32 = 1;
+
+        test_rtype_instr(
+            "SUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_32 as i64) as u64,
+            (rt_in_32 as i64) as u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::IntegerOverflow),
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_64 as i64) as u64,
+            (rt_in_64 as i64) as u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::IntegerOverflow),
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the SUBU instruction.
+    ///
+    /// # SUBU:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    /// - 64-bit:
+    ///   - temp    <- GPR[rs] + GPR[rt]
+    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_subu() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100011;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // No overflow
+        let rs_in_32: i32 = 99;
+        let rt_in_32: i32 = 10;
+        let rd_out_32: i32 = rs_in_32 - rt_in_32;
+
+        let rs_in_64: i32 = 5002;
+        let rt_in_64: i32 = 963;
+        let rd_out_64: u64 = sign_extend_u64::<32>((rs_in_64 - rt_in_64) as u64);
+
+        test_rtype_instr(
+            "SUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_32 as i64) as u64,
+            (rt_in_32 as i64) as u64,
+            rd_in,
+            rd_out_32 as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_64 as i64) as u64,
+            (rt_in_64 as i64) as u64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (no exception occurs)
+        let rs_in_32: i32 = i32::MIN;
+        let rt_in_32: i32 = 1;
+        let rd_out_32: i32 = rs_in_32.wrapping_sub(rt_in_32);
+
+        let rs_in_64: i32 = i32::MIN;
+        let rt_in_64: i32 = 1;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rs_in_64.wrapping_sub(rt_in_64) as u64);
+
+        test_rtype_instr(
+            "SUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_32 as i64) as u64,
+            (rt_in_32 as i64) as u64,
+            rd_in,
+            (rd_out_32 as u32) as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            (rs_in_64 as i64) as u64,
+            (rt_in_64 as i64) as u64,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSUB instruction.
+    ///
+    /// # DSUB:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] - GPR[rt]
+    /// ## Exceptions:
+    /// - Integer Overflow
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsub() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b101110;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // No overflow
+        let rs_in: i64 = 5002;
+        let rt_in: i64 = 963;
+        let rd_out: i64 = rs_in - rt_in;
+
+        test_rtype_instr(
+            "DSUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in as u64,
+            rt_in as u64,
+            rd_in,
+            rd_out as u64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (output register unchanged)
+        let rs_in: i64 = i64::MIN;
+        let rt_in: i64 = 1234;
+
+        test_rtype_instr(
+            "DSUB",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in as u64,
+            rt_in as u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::IntegerOverflow),
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSUBU instruction.
+    ///
+    /// # DSUBU:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] - GPR[rt]
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsubu() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b101111;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // No overflow
+        let rs_in: i64 = 5002;
+        let rt_in: i64 = 963;
+        let rd_out: i64 = rs_in - rt_in;
+
+        test_rtype_instr(
+            "DSUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in as u64,
+            rt_in as u64,
+            rd_in,
+            rd_out as u64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (no exception occurs)
+        let rs_in: i64 = i64::MIN;
+        let rt_in: i64 = 1234;
+        let rd_out: i64 = rs_in.wrapping_sub(rt_in);
+
+        test_rtype_instr(
+            "DSUBU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in as u64,
+            rt_in as u64,
+            rd_in,
+            rd_out as u64,
             None,
             RegSize::Reg64,
         );
