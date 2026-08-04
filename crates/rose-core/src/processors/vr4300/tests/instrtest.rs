@@ -361,7 +361,8 @@ mod instrtest {
         let immediate: u16 = 0x0ACE;
 
         let rs_in_32: u32 = 0x0ACE0987;
-        let rt_out_32: u64 = (rt_in & !MASK32) | (sign_extend_u32::<16>(immediate as u32) + rs_in_32) as u64;
+        let rt_out_32: u64 =
+            (rt_in & !MASK32) | (sign_extend_u32::<16>(immediate as u32) + rs_in_32) as u64;
 
         let rs_in_64: u64 = 0x00000000_0ACE0987;
         let rt_out_64: u64 =
@@ -1980,12 +1981,15 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- sign_extend::<32 - sa>(GPR[rt] >> sa)
+    ///   - `GPR[rd] <- sign_extend::<32 - sa>(GPR[rt] >> sa)`
     /// - 64-bit:
-    ///   - temp    <- sign_extend::<32 - sa>(GPR[rt] >> sa)
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- sign_extend::<32 - sa>(GPR[rt] >> sa)`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
+    /// ## HARDWARE BUG (32-bit mode):
+    ///   Instead of shifting in 1's or 0's based on the sign of the 32-bit
+    ///   `GPR[rt]` value, bits from the high 32-bits are shifted in instead.
     #[test]
     fn test_sra() {
         const OP: u32 = 0b000000;
@@ -2000,7 +2004,10 @@ mod instrtest {
         // Regular shift
         let sa = 15;
         let rt_in: u64 = 0x00000000_81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (((rt_in as i32) >> sa) as u32) as u64;
+        // HARDWARE BUG (32-bit mode):
+        //   Causes rd_out_32 to contain 0's in the high bits after the shift.
+        //   As the 32-bit rt_in is signed, without the but there would be 1's.
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in >> sa) as u32) as u64;
         let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
 
         test_rtype_instr(
@@ -2087,6 +2094,9 @@ mod instrtest {
     ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
     /// ## Exceptions:
     /// - None
+    /// ## HARDWARE BUG (32-bit mode):
+    ///   Instead of shifting in 1's or 0's based on the sign of the 32-bit
+    ///   `GPR[rt]` value, bits from the high 32-bits are shifted in instead.
     #[test]
     fn test_srav() {
         const OP: u32 = 0b000000;
@@ -2101,7 +2111,10 @@ mod instrtest {
         // Regular shift
         let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in: u64 = 0x00000000_81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (((rt_in as i32) >> (rs_in & 31)) as u32) as u64;
+        // HARDWARE BUG (32-bit mode):
+        //   Causes rd_out_32 to contain 0's in the high bits after the shift.
+        //   As the 32-bit rt_in is signed, without the but there would be 1's.
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in >> (rs_in & 31)) as u32) as u64;
         let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
 
         test_rtype_instr(
@@ -2832,5 +2845,4 @@ mod instrtest {
             RegSize::Reg64,
         );
     }
-    
 }

@@ -182,14 +182,17 @@ impl CpuVR4300 {
                 }
                 3 => {
                     // SRA
+                    //
+                    // SRA HARDWARE BUG (32-bit mode):
+                    //   Instead of shifting in 1's or 0's based on the sign of the 32-bit
+                    //   GPR[rt] value, bits from the high 32-bits are shifted in instead.
                     let instr = RTypeInstruction::from_raw(i);
-                    // Cast down to signed for arithmetic shift
-                    let rt = self.regs[instr.rt as usize] as i32;
+                    let rt = self.regs[instr.rt as usize];
                     let mask: u64 = match self.reg_size {
                         RegSize::Reg32 => 0x00000000_FFFFFFFF,
                         RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
-                    let result = (rt >> instr.shift) as u64;
+                    let result = ((rt >> instr.shift) as i32) as u64; // Shift full 64-bit register, then do 32-bit sign extension
                     self.regs[instr.rd as usize] &= !mask;
                     self.regs[instr.rd as usize] |= result & mask;
                 }
@@ -221,15 +224,19 @@ impl CpuVR4300 {
                 }
                 7 => {
                     // SRAV
+                    // 
+                    //
+                    // SRAV HARDWARE BUG (32-bit mode):
+                    //   Instead of shifting in 1's or 0's based on the sign of the 32-bit
+                    //   GPR[rt] value, bits from the high 32-bits are shifted in instead.
                     let instr = RTypeInstruction::from_raw(i);
-                    // Cast down to signed for arithmetic shift
-                    let rt = self.regs[instr.rt as usize] as i32;
+                    let rt = self.regs[instr.rt as usize];
                     let shift = self.regs[instr.rs as usize] & 0x1F;
                     let mask: u64 = match self.reg_size {
                         RegSize::Reg32 => 0x00000000_FFFFFFFF,
                         RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                     };
-                    let result = (rt >> shift) as u64;
+                    let result = ((rt >> shift) as i32) as u64; // Shift full 64-bit register, then do 32-bit sign extension
                     self.regs[instr.rd as usize] &= !mask;
                     self.regs[instr.rd as usize] |= result & mask;
                 }
