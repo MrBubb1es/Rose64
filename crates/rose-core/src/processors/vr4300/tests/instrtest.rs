@@ -706,12 +706,13 @@ mod instrtest {
 
         let rs: u32 = 4;
         let rt: u32 = 5;
-        
+
         let rs_in: u64 = 0xABCDEF01_23456789;
         let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
         let immediate: u16 = 0xFEED;
         // Should not affect high 32-bits
-        let rt_out_32: u64 = (rt_in & 0xFFFFFFFF_00000000) | (rs_in & immediate as u64 & 0x00000000_FFFFFFFF);
+        let rt_out_32: u64 =
+            (rt_in & 0xFFFFFFFF_00000000) | (rs_in & immediate as u64 & 0x00000000_FFFFFFFF);
         // Affects full 64-bit register
         let rt_out_64: u64 = rs_in & immediate as u64;
 
@@ -767,7 +768,8 @@ mod instrtest {
         let rt_in: u64 = 0xCAFEF00D_01230000;
         let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
         // Should not affect high 32-bits
-        let rd_out_32: u64 = (rd_in & 0xFFFFFFFF_00000000) | ((!(rs_in | rt_in)) & 0x00000000_FFFFFFFF);
+        let rd_out_32: u64 =
+            (rd_in & 0xFFFFFFFF_00000000) | ((!(rs_in | rt_in)) & 0x00000000_FFFFFFFF);
         // Affects full 64-bit register
         let rd_out_64: u64 = !(rs_in | rt_in);
 
@@ -829,7 +831,8 @@ mod instrtest {
         let rt_in: u64 = 0xCAFEF00D_01230000;
         let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
         // Should not affect high 32-bits
-        let rd_out_32: u64 = (rd_in & 0xFFFFFFFF_00000000) | ((rs_in | rt_in) & 0x00000000_FFFFFFFF);
+        let rd_out_32: u64 =
+            (rd_in & 0xFFFFFFFF_00000000) | ((rs_in | rt_in) & 0x00000000_FFFFFFFF);
         // Affects full 64-bit register
         let rd_out_64: u64 = rs_in | rt_in;
 
@@ -882,12 +885,13 @@ mod instrtest {
 
         let rs: u32 = 4;
         let rt: u32 = 5;
-        
+
         let rs_in: u64 = 0xABCDEF01_23456789;
         let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
         let immediate: u16 = 0xFEED;
         // Should not affect high 32-bits
-        let rt_out_32: u64 = (rt_in & 0xFFFFFFFF_00000000) | ((rs_in | immediate as u64) & 0x00000000_FFFFFFFF);
+        let rt_out_32: u64 =
+            (rt_in & 0xFFFFFFFF_00000000) | ((rs_in | immediate as u64) & 0x00000000_FFFFFFFF);
         // Affects full 64-bit register
         let rt_out_64: u64 = rs_in | immediate as u64;
 
@@ -913,6 +917,320 @@ mod instrtest {
             rt_in,
             immediate,
             rt_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DADD instruction.
+    ///
+    /// # DADD:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    /// ## Exceptions:
+    /// - Integer Overflow
+    /// - Reserved Instruction Exception
+    #[test]
+    fn test_dadd() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b101100;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DADD",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // No Overflow
+        let rs_in: u64 = 0x1001FEDC_7F360123;
+        let rt_in: u64 = 0x81234567_FEDCBA98;
+        let rd_out: u64 = rs_in + rt_in;
+
+        test_rtype_instr(
+            "DADD",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (output register unchanged)
+        let rs_in: u64 = 0x7FFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0x00000000_00000001;
+        let rd_out: u64 = rd_in;
+
+        test_rtype_instr(
+            "DADD",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            Some(CpuException::IntegerOverflow),
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DADDI instruction.
+    ///
+    /// # DADDI:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)
+    /// ## Exceptions:
+    /// - Integer Overflow
+    /// - Reserved Instruction Exception
+    #[test]
+    fn test_daddi() {
+        const OP: u32 = 0b011000;
+
+        let rs: u32 = 4;
+        let rt: u32 = 5;
+        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_itype_instr(
+            "DADDI",
+            OP,
+            rs,
+            rt,
+            0u64,
+            rt_in,
+            0u16,
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // No overflow
+        let immediate: u16 = 0x0ACE;
+
+        let rs_in: u64 = 0x0ACE0987_DEFACE00;
+        let rt_out: u64 = rs_in + sign_extend_u64::<16>(immediate as u64);
+
+        test_itype_instr(
+            "DADDI",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (output register unchanged)
+        let immediate: u16 = 0xFFFF;
+
+        let rs_in: u64 = 0x80000000_00000000;
+        let rt_out: u64 = rt_in;
+
+        test_itype_instr(
+            "DADDI",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out,
+            Some(CpuException::IntegerOverflow),
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DADDU instruction.
+    ///
+    /// # DADDU:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    /// ## Exceptions:
+    /// - Reserved Instruction Exception
+    #[test]
+    fn test_daddu() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b101101;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DADDU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // No Overflow
+        let rs_in: u64 = 0x1001FEDC_7F360123;
+        let rt_in: u64 = 0x81234567_FEDCBA98;
+        let rd_out: u64 = rs_in + rt_in;
+
+        test_rtype_instr(
+            "DADDU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (no exception should occur)
+        let rs_in: u64 = 0x7FFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0x00000000_00000001;
+        let rd_out: u64 = rs_in.wrapping_add(rt_in);
+
+        test_rtype_instr(
+            "DADDU",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DADDIU instruction.
+    ///
+    /// # DADDIU:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)
+    /// ## Exceptions:
+    /// - Reserved Instruction Exception
+    #[test]
+    fn test_daddiu() {
+        const OP: u32 = 0b011001;
+
+        let rs: u32 = 4;
+        let rt: u32 = 5;
+        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_itype_instr(
+            "DADDIU",
+            OP,
+            rs,
+            rt,
+            0u64,
+            rt_in,
+            0u16,
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // No overflow
+        let immediate: u16 = 0x0ACE;
+
+        let rs_in: u64 = 0x0ACE0987_DEFACE00;
+        let rt_out: u64 = rs_in + sign_extend_u64::<16>(immediate as u64);
+
+        test_itype_instr(
+            "DADDIU",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Overflow test (output register unchanged)
+        let immediate: u16 = 0xFFFF;
+
+        let rs_in: u64 = 0x80000000_00000000;
+        let rt_out: u64 = rs_in.wrapping_add(sign_extend_u64::<16>(immediate as u64));
+
+        test_itype_instr(
+            "DADDIU",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out,
             None,
             RegSize::Reg64,
         );
