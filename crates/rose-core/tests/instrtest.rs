@@ -8,7 +8,7 @@
 //! -----------------------------------------------------------------------
 
 mod instrtest {
-    use rose_core::processors::vr4300::{CpuVR4300, RegSize, CpuException};
+    use rose_core::processors::vr4300::{CpuException, CpuVR4300, RegSize};
 
     macro_rules! itype_fail_str {
         () => {
@@ -308,7 +308,7 @@ mod instrtest {
         let rs_in_64: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in_64: u64 = 0xFFFFFFFF_80000000;
         let rd_out_64: u64 = rd_in;
-        
+
         test_rtype_instr(
             "ADD",
             OP,
@@ -365,12 +365,13 @@ mod instrtest {
 
         // No overflow
         let immediate: u16 = 0x0ACE;
-        
+
         let rs_in_32: u32 = 0x0ACE0987;
         let rt_out_32: u32 = sign_extend_u32::<16>(immediate as u32) + rs_in_32;
 
         let rs_in_64: u64 = 0x00000000_0ACE0987;
-        let rt_out_64: u64 = sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64) + rs_in_64);
+        let rt_out_64: u64 =
+            sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64) + rs_in_64);
 
         test_itype_instr(
             "ADDI",
@@ -460,9 +461,10 @@ mod instrtest {
 
         let rs_in_32: u32 = 0x0ACE0987;
         let rt_out_32: u32 = sign_extend_u32::<16>(immediate as u32) + rs_in_32;
-        
+
         let rs_in_64: u64 = 0x00000000_0ACE0987;
-        let rt_out_64: u64 = sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64) + rs_in_64);
+        let rt_out_64: u64 =
+            sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64) + rs_in_64);
 
         test_itype_instr(
             "ADDIU",
@@ -497,7 +499,8 @@ mod instrtest {
         let rt_out_32: u32 = sign_extend_u32::<16>(immediate as u32).wrapping_add(rs_in_32);
 
         let rs_in_64: u64 = 0x00000000_7FFFFFFF;
-        let rt_out_64: u64 = sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64).wrapping_add(rs_in_64));
+        let rt_out_64: u64 =
+            sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64).wrapping_add(rs_in_64));
 
         test_itype_instr(
             "ADDI",
@@ -625,11 +628,193 @@ mod instrtest {
             SA,
             FUNC,
             rs_in_64,
-            
             rt_in_64,
-            
             rd_in,
             rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the AND instruction.
+    ///
+    /// # AND:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rs] & GPR[rt]
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] & GPR[rt]
+    /// ## Exceptions:
+    /// - None
+    ///
+    /// We only test the 64-bit version because the 32-bit version is identical.
+    #[test]
+    fn test_and() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100100;
+
+        let rs = 1;
+        let rt = 2;
+        let rd = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        let rs_in: u64 = 0xAAFF00AA_ABCDFFFF;
+        let rt_in: u64 = 0x550FF0FA_FFFF1234;
+        let rd_out: u64 = 0x000F00AA_ABCD1234;
+
+        test_rtype_instr(
+            "AND",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the OR instruction.
+    ///
+    /// # OR:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rs] | GPR[rt]
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] | GPR[rt]
+    /// ## Exceptions:
+    /// - None
+    ///
+    /// We only test the 64-bit version because the 32-bit version is identical.
+    #[test]
+    fn test_or() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100101;
+
+        let rs = 1;
+        let rt = 2;
+        let rd = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        let rs_in: u64 = 0xFFFF0000_11114444;
+        let rt_in: u64 = 0xF0F0F0F0_22228888;
+        let rd_out: u64 = 0xFFFFF0F0_3333CCCC;
+
+        test_rtype_instr(
+            "OR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the NOR instruction.
+    ///
+    /// # NOR:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- !(GPR[rs] | GPR[rt])
+    /// - 64-bit:
+    ///   - GPR[rd] <- !(GPR[rs] | GPR[rt])
+    /// ## Exceptions:
+    /// - None
+    ///
+    /// We only test the 64-bit version because the 32-bit version is identical.
+    #[test]
+    fn test_nor() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100111;
+
+        let rs = 1;
+        let rt = 2;
+        let rd = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        let rs_in: u64 = 0xFFFF0000_11114444;
+        let rt_in: u64 = 0xF0F0F0F0_22228888;
+        let rd_out: u64 = 0x00000F0F_CCCC3333;
+
+        test_rtype_instr(
+            "NOR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the XOR instruction.
+    ///
+    /// # XOR:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rs] ^ GPR[rt]
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rs] ^ GPR[rt]
+    /// ## Exceptions:
+    /// - None
+    ///
+    /// We only test the 64-bit version because the 32-bit version is identical.
+    #[test]
+    fn test_xor() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100110;
+
+        let rs = 1;
+        let rt = 2;
+        let rd = 3;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+
+        let rs_in: u64 = 0xFFFF0000_F5A01234;
+        let rt_in: u64 = 0xF0F0F0F0_3A5A3666;
+        let rd_out: u64 = 0x0F0FF0F0_CFFA2452;
+
+        test_rtype_instr(
+            "XOR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
             None,
             RegSize::Reg64,
         );

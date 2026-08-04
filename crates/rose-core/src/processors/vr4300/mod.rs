@@ -195,10 +195,30 @@ impl CpuVR4300 {
                 }
                 34 => {} // SUB
                 35 => {} // SUBU
-                36 => {} // AND
-                37 => {} // OR
-                38 => {} // XOR
-                39 => {} // NOR
+                36 => {
+                    // AND
+                    let instr = RTypeInstruction::from_raw(i);
+                    let result = self.regs[instr.rs as usize] & self.regs[instr.rt as usize];
+                    self.regs[instr.rd as usize] = result;
+                }
+                37 => {
+                    // OR
+                    let instr = RTypeInstruction::from_raw(i);
+                    let result = self.regs[instr.rs as usize] | self.regs[instr.rt as usize];
+                    self.regs[instr.rd as usize] = result;
+                }
+                38 => {
+                    // XOR
+                    let instr = RTypeInstruction::from_raw(i);
+                    let result = self.regs[instr.rs as usize] ^ self.regs[instr.rt as usize];
+                    self.regs[instr.rd as usize] = result;
+                }
+                39 => {
+                    // NOR
+                    let instr = RTypeInstruction::from_raw(i);
+                    let result = !(self.regs[instr.rs as usize] | self.regs[instr.rt as usize]);
+                    self.regs[instr.rd as usize] = result;
+                }
                 42 => {} // SLT
                 43 => {} // SLTU
                 44 => {} // DADD
