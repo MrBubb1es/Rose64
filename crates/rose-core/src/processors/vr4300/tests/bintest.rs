@@ -1,20 +1,20 @@
 //!-----------------------------------------------------------------------------
 //! VR4300/tests.rs: Instruction-level test cases for the VR4300 CPU.
-//! 
+//!
 //! Using Thar0's N64 cpu test binaries to test instruction behavior. These
 //! are NOT full N64 roms, but raw binary files containing machine code, so the
 //! CPU will be given some dummy RAM to work with and run in isolation.
-//! 
+//!
 //! Authors: logan (lpreston618), MrBubblezsz
 //!-----------------------------------------------------------------------------
 
-
 mod bintest {
-    use rose_core::processors::vr4300::CpuVR4300;
-    use rose_core::common::consts::KB;
+    use crate::common::consts::MB;
+    use crate::memory::bus::{Bus, MemoryAccess};
+    use crate::processors::vr4300::CpuVR4300;
 
-    const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cpu/");
-    const TEST_MEM_SIZE: usize = 32 * KB;
+    const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-roms/vr4300-thar0/");
+    const TEST_ROM_SIZE: usize = 8 * MB;
 
     struct BinTestHeader {
         code_offset: u32,
@@ -24,21 +24,23 @@ mod bintest {
         memory_chunk_size: u32,
         code_load_addr: u32,
         memory_load_addr: u32,
-        extended_header_addr: u32,
+        _extended_header_addr: u32,
     }
 
-    struct BinTestFuncMeta {
-        vram_addr: u32,
-        size_bytes: u32,
-    }
+    // Unused for now
+    // struct BinTestFuncMeta {
+    //     vram_addr: u32,
+    //     size_bytes: u32,
+    // }
 
-    struct BinTestExtendedHeader {
-        header_type: u32,
-        next_extended_header_offset: u32,
-        num_funcs: u32,
-        entrypoint_index: u32,
-        funcs_meta: Vec<BinTestFuncMeta>,
-    }
+    // Unused for now
+    // struct BinTestExtendedHeader {
+    //     header_type: u32,
+    //     next_extended_header_offset: u32,
+    //     num_funcs: u32,
+    //     entrypoint_index: u32,
+    //     funcs_meta: Vec<BinTestFuncMeta>,
+    // }
 
     struct BinTest {
         header: BinTestHeader,
@@ -48,22 +50,16 @@ mod bintest {
         // extended_headers: Vec<BinTestExtendedHeader>, // probably won't use these
     }
 
-    struct TestMemory {
-        mem: [u32; TEST_MEM_SIZE],
-    }
-
     /// Read in four u8 and return a u32
     fn u32_at(data: &[u8], idx: usize) -> u32 {
-        u32::from_be_bytes([
-            data[idx+0], data[idx+1], data[idx+2], data[idx+3],
-        ])
+        u32::from_be_bytes([data[idx + 0], data[idx + 1], data[idx + 2], data[idx + 3]])
     }
 
     /// Read in binary test header info from raw bytes.
-    /// 
+    ///
     /// # Arguments
     ///  - `data`: raw bytes of the .bin file
-    /// 
+    ///
     /// # Returns
     ///  - BinTest struct with header info and vectors containing the code
     ///    segment, initial memory state, and final mempory state.
@@ -76,7 +72,7 @@ mod bintest {
             memory_chunk_size: u32_at(data, 16),
             code_load_addr: u32_at(data, 20),
             memory_load_addr: u32_at(data, 24),
-            extended_header_addr: u32_at(data, 28),
+            _extended_header_addr: u32_at(data, 28),
         };
 
         let code_start = header.code_offset as usize;
@@ -95,20 +91,68 @@ mod bintest {
     }
 
     fn run_bin_test(test_file: &str) {
-        const MAGIC_RETURN_ADDRESS: u32 = 0xDEAD0123;
+        const MAX_INSTRUCTIONS: usize = 1_000_000;
+        const MAGIC_RETURN_ADDRESS: u64 = 0x00000000_DEAD0123;
 
         let test_path = format!("{TEST_DIR}{test_file}");
         let test_data = std::fs::read(test_path).unwrap();
         let bin_test = read_bin_test(&test_data);
 
-        let cpu = CpuVR4300::new();
-        
-        // Todo:
-        // - Load bin_test.code_chunk into memory starting at
-        //    bin_test.header.code_offset.
-        // - Set cpu.r31 (return address) to magic return address
-        // - Cycle cpu until JR RA executed, then immediately halt
-        // - Compare memory state to bin_test.final_memory
+        let blank_rom = vec![0u8; TEST_ROM_SIZE];
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(blank_rom).ok().unwrap();
+
+        let code_start = bin_test.header.code_load_addr;
+        let code_size = bin_test.header.code_size;
+
+        let mem_start = bin_test.header.memory_load_addr;
+        let mem_size = bin_test.header.memory_chunk_size;
+
+        for i in 0..code_size {
+            bus.write8(code_start + i, bin_test.code_chunk[i as usize]);
+        }
+
+        for i in 0..mem_size {
+            bus.write8(mem_start + i, bin_test.initial_memory[i as usize]);
+        }
+
+        cpu.regs[CpuVR4300::LR] = MAGIC_RETURN_ADDRESS;
+
+        let is_jr_instr = |instr: u32| (instr >> 26) == 0 && (instr & 0x3F) == 0b001000;
+
+        let mut instruction_count: usize = 0;
+        for _ in 0..MAX_INSTRUCTIONS {
+            let instr = bus.read32(cpu.pc as u32);
+            cpu.pc += 4;
+
+            if is_jr_instr(instr) {
+                let rs = (instr >> 21) & 0x1F;
+
+                if cpu.regs[rs as usize] == MAGIC_RETURN_ADDRESS {
+                    break;
+                }
+            }
+
+            cpu.execute_instruction(instr);
+            instruction_count += 1;
+        }
+
+        println!("Finished '{test_file}' after {instruction_count} instructions.");
+
+        let mut memory_result = Vec::new();
+
+        for i in 0..mem_size {
+            memory_result.push(bus.read8(mem_start + i));
+        }
+
+        for i in 0..bin_test.header.memory_chunk_size as usize {
+            assert_eq!(
+                memory_result[i],
+                bin_test.final_memory[i],
+                "Mismatch at index {i}, address ${:08X}",
+                mem_start + i as u32,
+            );
+        }
     }
 
     #[test]

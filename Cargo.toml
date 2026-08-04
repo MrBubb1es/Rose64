@@ -17,6 +17,7 @@ repository = "https://github.com/MrBubb1es/Rose64"
 
 [workspace.dependencies]
 rose-core = { path = "crates/rose-core" }
+anyhow = "1.0.104"
 
 [profile.release]
 opt-level = 3
