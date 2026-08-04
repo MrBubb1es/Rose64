@@ -180,7 +180,7 @@ impl CpuVR4300 {
                 }
                 33 => {
                     // ADDU
-                   let instr = RTypeInstruction::from_raw(i);
+                    let instr = RTypeInstruction::from_raw(i);
 
                     let rs = self.regs[instr.rs as usize] as i32;
                     let rt = self.regs[instr.rt as usize] as i32;
