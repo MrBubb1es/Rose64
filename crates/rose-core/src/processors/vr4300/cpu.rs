@@ -216,8 +216,40 @@ impl CpuVR4300 {
 
                     self.regs[instr.rd as usize] = result;
                 }
-                34 => {} // SUB
-                35 => {} // SUBU
+                34 => {
+                    // SUB
+                    let instr = RTypeInstruction::from_raw(i);
+
+                    let rs = self.regs[instr.rs as usize] as i32;
+                    let rt = self.regs[instr.rt as usize] as i32;
+                    let (sum, overflow) = rs.overflowing_sub(rt);
+
+                    let result = match self.reg_size {
+                        RegSize::Reg32 => (sum as u32) as u64,
+                        RegSize::Reg64 => (sum as i64) as u64,
+                    };
+
+                    if overflow {
+                        self.raise_exception(CpuException::IntegerOverflow);
+                    } else {
+                        self.regs[instr.rd as usize] = result;
+                    }
+                }
+                35 => {
+                    // SUBU
+                    let instr = RTypeInstruction::from_raw(i);
+
+                    let rs = self.regs[instr.rs as usize] as i32;
+                    let rt = self.regs[instr.rt as usize] as i32;
+                    let sum = rs.wrapping_sub(rt);
+
+                    let result = match self.reg_size {
+                        RegSize::Reg32 => (sum as u32) as u64,
+                        RegSize::Reg64 => (sum as i64) as u64,
+                    };
+
+                    self.regs[instr.rd as usize] = result;
+                }
                 36 => {
                     // AND
                     let instr = RTypeInstruction::from_raw(i);
@@ -310,8 +342,36 @@ impl CpuVR4300 {
                         }
                     }
                 }
-                46 => {} // DSUB
-                47 => {} // DSUBU
+                46 => {
+                    // DSUB
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rs = self.regs[instr.rs as usize] as i64;
+                            let rt = self.regs[instr.rt as usize] as i64;
+                            let (result, overflow) = rs.overflowing_sub(rt);
+                            if overflow {
+                                self.raise_exception(CpuException::IntegerOverflow);
+                            } else {
+                                self.regs[instr.rd as usize] = result as u64;
+                            }
+                        }
+                    }
+                }
+                47 => {
+                    // DSUBU
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rs = self.regs[instr.rs as usize];
+                            let rt = self.regs[instr.rt as usize];
+                            let result = rs.wrapping_sub(rt);
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
                 48 => {} // TGE
                 49 => {} // TGEU
                 50 => {} // TLT
