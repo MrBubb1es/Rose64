@@ -258,11 +258,13 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let mask: u64 = 0xFFFFFFFF_00000000;
 
         // No overflow
         let rs_in_32: u32 = 0x1001FEDC;
         let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u32 = rs_in_32 + rt_in_32;
+        let mut rd_out_32: u64 = (rs_in_32 + rt_in_32) as u64;
+        rd_out_32 |= mask & rd_in;
 
         let rs_in_64: u64 = 0x00000000_1001FEDC;
         let rt_in_64: u64 = 0xFFFFFFFF_81234567;
@@ -455,12 +457,14 @@ mod instrtest {
         let rs: u32 = 4;
         let rt: u32 = 5;
         let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let mask: u64 = 0xFFFFFFFF_00000000;
 
         // No overflow
         let immediate: u16 = 0x0ACE;
 
         let rs_in_32: u32 = 0x0ACE0987;
-        let rt_out_32: u32 = sign_extend_u32::<16>(immediate as u32) + rs_in_32;
+        let mut rt_out_32: u64 = ((immediate as u32) + rs_in_32) as u64;
+        rt_out_32 |= rt_in & mask;
 
         let rs_in_64: u64 = 0x00000000_0ACE0987;
         let rt_out_64: u64 =
@@ -496,7 +500,8 @@ mod instrtest {
         let immediate: u16 = 0x7FFF;
 
         let rs_in_32: u32 = 0x7FFFFFFF;
-        let rt_out_32: u32 = sign_extend_u32::<16>(immediate as u32).wrapping_add(rs_in_32);
+        let mut rt_out_32: u64 = ((immediate as u32).wrapping_add(rs_in_32)) as u64;
+        rt_out_32 |= rt_in & mask;
 
         let rs_in_64: u64 = 0x00000000_7FFFFFFF;
         let rt_out_64: u64 =
@@ -552,11 +557,13 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let mask = 0xFFFFFFFF_00000000;
 
         // No overflow
         let rs_in_32: u32 = 0x1001FEDC;
         let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u32 = rs_in_32 + rt_in_32;
+        let mut rd_out_32: u64 = (rs_in_32 + rt_in_32) as u64;
+        rd_out_32 |= rd_in & mask;
 
         let rs_in_64: u64 = 0x00000000_1001FEDC;
         let rt_in_64: u64 = 0xFFFFFFFF_81234567;
@@ -573,7 +580,7 @@ mod instrtest {
             rs_in_32 as u64,
             rt_in_32 as u64,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -597,7 +604,8 @@ mod instrtest {
         // Overflow test
         let rs_in_32: u32 = 0xFFFFFFFF;
         let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u32 = rs_in_32.wrapping_add(rt_in_32);
+        let mut rd_out_32: u64 = rs_in_32.wrapping_add(rt_in_32) as u64;
+        rd_out_32 |= rd_in & mask;
 
         let rs_in_64: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in_64: u64 = 0xFFFFFFFF_80000000;
@@ -614,7 +622,7 @@ mod instrtest {
             rs_in_32 as u64,
             rt_in_32 as u64,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );

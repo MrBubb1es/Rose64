@@ -156,12 +156,83 @@ impl CpuVR4300 {
 
         match opcode {
             0 => match i & 0x3F {
-                0 => {}  // SLL
-                2 => {}  // SRL
-                3 => {}  // SRA
-                4 => {}  // SLLV
-                6 => {}  // SRLV
-                7 => {}  // SRAV
+                0 => {
+                    // SLL
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rt = self.regs[instr.rt as usize];
+                    let mask: u64 = match self.reg_size {
+                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                    };
+                    let result = ((rt << instr.shift) as i32) as u64;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result & mask;
+                }
+                2 => {
+                    // SRL
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rt = self.regs[instr.rt as usize];
+                    let mask: u64 = match self.reg_size {
+                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                    };
+                    let result = ((rt >> instr.shift) as i32) as u64;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result & mask;
+                }
+                3 => {
+                    // SRA
+                    let instr = RTypeInstruction::from_raw(i);
+                    // Cast down to signed for arithmetic shift
+                    let rt = self.regs[instr.rt as usize] as i32;
+                    let mask: u64 = match self.reg_size {
+                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                    };
+                    let result = (rt >> instr.shift) as u64;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result & mask;
+                }
+                4 => {
+                    // SLLV
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rt = self.regs[instr.rt as usize];
+                    let shift = self.regs[instr.rs as usize] & 0x3F;
+                    let mask: u64 = match self.reg_size {
+                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                    };
+                    let result = ((rt << shift) as i32) as u64;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result & mask;
+                }
+                6 => {
+                    // SRLV
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rt = self.regs[instr.rt as usize];
+                    let shift = self.regs[instr.rs as usize] & 0x3F;
+                    let mask: u64 = match self.reg_size {
+                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                    };
+                    let result = ((rt >> shift) as i32) as u64;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result & mask;
+                }
+                7 => {
+                    // SRAV
+                    let instr = RTypeInstruction::from_raw(i);
+                    // Cast down to signed for arithmetic shift
+                    let rt = self.regs[instr.rt as usize] as i32;
+                    let shift = self.regs[instr.rs as usize] & 0x3F;
+                    let mask: u64 = match self.reg_size {
+                        RegSize::Reg32 => 0xFFFFFFFF_00000000,
+                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF
+                    };
+                    let result = (rt >> shift) as u64;
+                    self.regs[instr.rd as usize] &= !mask;
+                    self.regs[instr.rd as usize] |= result & mask;
+                }
                 8 => {}  // JR
                 9 => {}  // JALR
                 12 => {} // SYSCALL
@@ -171,9 +242,46 @@ impl CpuVR4300 {
                 17 => {} // MTHI
                 18 => {} // MFLO
                 19 => {} // MTLO
-                20 => {} // DSLLV
-                22 => {} // DSRLV
-                23 => {} // DSRAV
+                20 => {
+                    // DSLLV
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rt = self.regs[instr.rt as usize];
+                            let shift = self.regs[instr.rs as usize] & 0x3F;
+                            let result = rt << shift;
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
+                22 => {
+                    // DSLRV
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rt = self.regs[instr.rt as usize];
+                            let shift = self.regs[instr.rs as usize] & 0x3F;
+                            let result = rt >> shift;
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
+                23 => {
+                    // DSRAV
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            // Cast to signed for arithmetic shift
+                            let rt = self.regs[instr.rt as usize] as i64;
+                            let shift = self.regs[instr.rs as usize] & 0x3F;
+                            let result = rt >> shift;
+                            self.regs[instr.rd as usize] = result as u64;
+                        }
+                    }
+                }
                 24 => {} // MULT
                 25 => {} // MULTU
                 26 => {} // DIV
@@ -402,12 +510,80 @@ impl CpuVR4300 {
                 51 => {} // TLTU
                 52 => {} // TEQ
                 54 => {} // TNE
-                56 => {} // DSLL
-                58 => {} // DSRL
-                59 => {} // DSRA
-                60 => {} // DSLL32
-                62 => {} // DSRL32
-                63 => {} // DSRA32
+                56 => {
+                    // DSLL
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rt = self.regs[instr.rt as usize];
+                            let result = rt << instr.shift;
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
+                58 => {
+                    // DSRL
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rt = self.regs[instr.rt as usize];
+                            let result = rt >> instr.shift;
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
+                59 => {
+                    // DSRA
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            // Cast to signed value for arithmetic shift.
+                            let rt = self.regs[instr.rt as usize] as i64;
+                            let result = rt >> instr.shift;
+                            self.regs[instr.rd as usize] = result as u64;
+                        }
+                    }
+                }
+                60 => {
+                    // DSLL32
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rt = self.regs[instr.rt as usize];
+                            let result = rt << (instr.shift + 32);
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
+                62 => {
+                    // DSRL32
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rt = self.regs[instr.rt as usize];
+                            let result = rt >> (instr.shift + 32);
+                            self.regs[instr.rd as usize] = result;
+                        }
+                    }
+                }
+                63 => {
+                    // DSRA32
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            // Cast to signed for arithmetic shift
+                            let rt = self.regs[instr.rt as usize] as i64;
+                            let result = rt >> (instr.shift + 32);
+                            self.regs[instr.rd as usize] = result as u64;
+                        }
+                    }
+                }
                 _ => panic!("Unrecognized SPECIAL opcode {i}"),
             },
             1 => {} // REGIMM
@@ -442,14 +618,22 @@ impl CpuVR4300 {
 
                 let rs = self.regs[instr.rs as usize] as i32;
                 let immediate = (instr.immediate as i16) as i32;
-                let sum = rs.wrapping_add(immediate);
+                let sum = rs.wrapping_add(immediate) as u64;
 
-                let result = match self.reg_size {
-                    RegSize::Reg32 => (sum as u32) as u64,
-                    RegSize::Reg64 => (sum as i64) as u64,
+                let mask = match self.reg_size {
+                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
+                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
                 };
 
-                self.regs[instr.rt as usize] = result;
+                // let result = match self.reg_size {
+                //     RegSize::Reg32 => (sum as u32) as u64,
+                //     RegSize::Reg64 => (sum as i64) as u64,
+                // };
+
+                self.regs[instr.rt as usize] &= !mask;
+                self.regs[instr.rt as usize] |= sum & mask;
+
+                // self.regs[instr.rt as usize] = result;
             }
             10 => {} // SLTI
             11 => {} // SLTIU
