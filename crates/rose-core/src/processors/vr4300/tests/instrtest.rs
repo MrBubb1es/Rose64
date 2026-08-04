@@ -10,6 +10,8 @@
 mod instrtest {
     use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
 
+    const MASK32: u64 = 0x00000000_FFFFFFFF;
+
     macro_rules! itype_fail_str {
         () => {
             r#"
@@ -249,14 +251,12 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
-        let mask: u64 = 0xFFFFFFFF_00000000;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
         let rs_in_32: u32 = 0x1001FEDC;
         let rt_in_32: u32 = 0x81234567;
-        let mut rd_out_32: u64 = (rs_in_32 + rt_in_32) as u64;
-        rd_out_32 |= mask & rd_in;
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in_32 + rt_in_32) as u64;
 
         let rs_in_64: u64 = 0x00000000_1001FEDC;
         let rt_in_64: u64 = 0xFFFFFFFF_81234567;
@@ -273,7 +273,7 @@ mod instrtest {
             rs_in_32 as u64,
             rt_in_32 as u64,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -355,13 +355,13 @@ mod instrtest {
 
         let rs: u32 = 4;
         let rt: u32 = 5;
-        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
         let immediate: u16 = 0x0ACE;
 
         let rs_in_32: u32 = 0x0ACE0987;
-        let rt_out_32: u32 = sign_extend_u32::<16>(immediate as u32) + rs_in_32;
+        let rt_out_32: u64 = (rt_in & !MASK32) | (sign_extend_u32::<16>(immediate as u32) + rs_in_32) as u64;
 
         let rs_in_64: u64 = 0x00000000_0ACE0987;
         let rt_out_64: u64 =
@@ -375,7 +375,7 @@ mod instrtest {
             rs_in_32 as u64,
             rt_in,
             immediate,
-            rt_out_32 as u64,
+            rt_out_32,
             None,
             RegSize::Reg32,
         );
@@ -448,15 +448,13 @@ mod instrtest {
 
         let rs: u32 = 4;
         let rt: u32 = 5;
-        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
-        let mask: u64 = 0xFFFFFFFF_00000000;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
         let immediate: u16 = 0x0ACE;
 
         let rs_in_32: u32 = 0x0ACE0987;
-        let mut rt_out_32: u64 = ((immediate as u32) + rs_in_32) as u64;
-        rt_out_32 |= rt_in & mask;
+        let rt_out_32: u64 = (rt_in & !MASK32) | ((immediate as u32) + rs_in_32) as u64;
 
         let rs_in_64: u64 = 0x00000000_0ACE0987;
         let rt_out_64: u64 =
@@ -470,7 +468,7 @@ mod instrtest {
             rs_in_32 as u64,
             rt_in,
             immediate,
-            rt_out_32 as u64,
+            rt_out_32,
             None,
             RegSize::Reg32,
         );
@@ -492,8 +490,7 @@ mod instrtest {
         let immediate: u16 = 0x7FFF;
 
         let rs_in_32: u32 = 0x7FFFFFFF;
-        let mut rt_out_32: u64 = ((immediate as u32).wrapping_add(rs_in_32)) as u64;
-        rt_out_32 |= rt_in & mask;
+        let rt_out_32: u64 = (rt_in & !MASK32) | ((immediate as u32).wrapping_add(rs_in_32)) as u64;
 
         let rs_in_64: u64 = 0x00000000_7FFFFFFF;
         let rt_out_64: u64 =
@@ -507,7 +504,7 @@ mod instrtest {
             rs_in_32 as u64,
             rt_in,
             immediate,
-            rt_out_32 as u64,
+            rt_out_32,
             None,
             RegSize::Reg32,
         );
@@ -548,14 +545,12 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
-        let mask = 0xFFFFFFFF_00000000;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
         let rs_in_32: u32 = 0x1001FEDC;
         let rt_in_32: u32 = 0x81234567;
-        let mut rd_out_32: u64 = (rs_in_32 + rt_in_32) as u64;
-        rd_out_32 |= rd_in & mask;
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in_32 + rt_in_32) as u64;
 
         let rs_in_64: u64 = 0x00000000_1001FEDC;
         let rt_in_64: u64 = 0xFFFFFFFF_81234567;
@@ -596,8 +591,7 @@ mod instrtest {
         // Overflow test
         let rs_in_32: u32 = 0xFFFFFFFF;
         let rt_in_32: u32 = 0x80000000;
-        let mut rd_out_32: u64 = rs_in_32.wrapping_add(rt_in_32) as u64;
-        rd_out_32 |= rd_in & mask;
+        let rd_out_32: u64 = (rd_in & !MASK32) | rs_in_32.wrapping_add(rt_in_32) as u64;
 
         let rs_in_64: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in_64: u64 = 0xFFFFFFFF_80000000;
@@ -659,10 +653,8 @@ mod instrtest {
 
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
         let rt_in: u64 = 0xCAFEF00D_01230000;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
-        // Should not affect high 32-bits
-        let rd_out_32: u64 = (rd_in & 0xFFFFFFFF_00000000) | (rs_in & rt_in & 0x00000000_FFFFFFFF);
-        // Affects full 64-bit register
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in & rt_in & MASK32);
         let rd_out_64: u64 = rs_in & rt_in;
 
         test_rtype_instr(
@@ -716,12 +708,9 @@ mod instrtest {
         let rt: u32 = 5;
 
         let rs_in: u64 = 0xABCDEF01_23456789;
-        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
         let immediate: u16 = 0xFEED;
-        // Should not affect high 32-bits
-        let rt_out_32: u64 =
-            (rt_in & 0xFFFFFFFF_00000000) | (rs_in & immediate as u64 & 0x00000000_FFFFFFFF);
-        // Affects full 64-bit register
+        let rt_out_32: u64 = (rt_in & !MASK32) | (rs_in & immediate as u64 & MASK32);
         let rt_out_64: u64 = rs_in & immediate as u64;
 
         test_itype_instr(
@@ -774,11 +763,8 @@ mod instrtest {
 
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
         let rt_in: u64 = 0xCAFEF00D_01230000;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
-        // Should not affect high 32-bits
-        let rd_out_32: u64 =
-            (rd_in & 0xFFFFFFFF_00000000) | ((!(rs_in | rt_in)) & 0x00000000_FFFFFFFF);
-        // Affects full 64-bit register
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((!(rs_in | rt_in)) & MASK32);
         let rd_out_64: u64 = !(rs_in | rt_in);
 
         test_rtype_instr(
@@ -837,11 +823,8 @@ mod instrtest {
 
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
         let rt_in: u64 = 0xCAFEF00D_01230000;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
-        // Should not affect high 32-bits
-        let rd_out_32: u64 =
-            (rd_in & 0xFFFFFFFF_00000000) | ((rs_in | rt_in) & 0x00000000_FFFFFFFF);
-        // Affects full 64-bit register
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rs_in | rt_in) & MASK32);
         let rd_out_64: u64 = rs_in | rt_in;
 
         test_rtype_instr(
@@ -895,12 +878,9 @@ mod instrtest {
         let rt: u32 = 5;
 
         let rs_in: u64 = 0xABCDEF01_23456789;
-        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
         let immediate: u16 = 0xFEED;
-        // Should not affect high 32-bits
-        let rt_out_32: u64 =
-            (rt_in & 0xFFFFFFFF_00000000) | ((rs_in | immediate as u64) & 0x00000000_FFFFFFFF);
-        // Affects full 64-bit register
+        let rt_out_32: u64 = (rt_in & !MASK32) | ((rs_in | immediate as u64) & MASK32);
         let rt_out_64: u64 = rs_in | immediate as u64;
 
         test_itype_instr(
@@ -952,7 +932,7 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_rtype_instr(
@@ -1033,7 +1013,7 @@ mod instrtest {
 
         let rs: u32 = 4;
         let rt: u32 = 5;
-        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_itype_instr(
@@ -1109,7 +1089,7 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_rtype_instr(
@@ -1189,7 +1169,7 @@ mod instrtest {
 
         let rs: u32 = 4;
         let rt: u32 = 5;
-        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_itype_instr(
@@ -1266,12 +1246,12 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
         let rs_in_32: i32 = 99;
         let rt_in_32: i32 = 10;
-        let rd_out_32: i32 = rs_in_32 - rt_in_32;
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rs_in_32 - rt_in_32) as u32) as u64;
 
         let rs_in_64: i32 = 5002;
         let rt_in_64: i32 = 963;
@@ -1371,12 +1351,12 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
         let rs_in_32: i32 = 99;
         let rt_in_32: i32 = 10;
-        let rd_out_32: i32 = rs_in_32 - rt_in_32;
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rs_in_32 - rt_in_32) as u32) as u64;
 
         let rs_in_64: i32 = 5002;
         let rt_in_64: i32 = 963;
@@ -1393,7 +1373,7 @@ mod instrtest {
             (rs_in_32 as i64) as u64,
             (rt_in_32 as i64) as u64,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -1417,7 +1397,7 @@ mod instrtest {
         // Overflow test (no exception occurs)
         let rs_in_32: i32 = i32::MIN;
         let rt_in_32: i32 = 1;
-        let rd_out_32: i32 = rs_in_32.wrapping_sub(rt_in_32);
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in_32.wrapping_sub(rt_in_32) as u32) as u64;
 
         let rs_in_64: i32 = i32::MIN;
         let rt_in_64: i32 = 1;
@@ -1478,7 +1458,7 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_rtype_instr(
@@ -1560,7 +1540,7 @@ mod instrtest {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let rd: u32 = 3;
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_rtype_instr(
@@ -1644,12 +1624,12 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let rs_in: u64 = 0x11111111_11111111; // unused for SLL
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // Regular shift
         let sa = 15;
         let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u32 = rt_in_32 << sa;
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in_32 << sa) as u64;
 
         let rt_in_64: u64 = 0xFFFFFFFF_81234567;
         let rd_out_64: u64 = sign_extend_u64::<32>((rt_in_64 & 0xFFFFFFFF) << sa);
@@ -1665,7 +1645,7 @@ mod instrtest {
             rs_in,
             rt_in_32 as u64,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -1686,10 +1666,10 @@ mod instrtest {
             RegSize::Reg64,
         );
 
-        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        // Shift by 0 (sign extend in 64-bit mode)
         let sa = 0;
         let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u64 = rt_in_32 as u64;
+        let rd_out_32: u64 = (rd_in & !MASK32) | rt_in_32 as u64;
 
         let rt_in_64: u64 = 0x00000000_80000000;
         let rd_out_64: u64 = sign_extend_u64::<32>(rt_in_64);
@@ -1749,12 +1729,12 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let sa: u32 = 0; // unused for SLLV
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // Regular shift
         let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u32 = rt_in_32 << (rs_in & 31);
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in_32 << (rs_in & 31)) as u64;
 
         let rt_in_64: u64 = 0xFFFFFFFF_81234567;
         let rd_out_64: u64 = sign_extend_u64::<32>((rt_in_64 & 0xFFFFFFFF) << (rs_in & 31));
@@ -1770,7 +1750,7 @@ mod instrtest {
             rs_in,
             rt_in_32 as u64,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -1791,10 +1771,10 @@ mod instrtest {
             RegSize::Reg64,
         );
 
-        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        // Shift by 0 (sign extend in 64-bit mode)
         let rs_in: u64 = 0x00000000_00000000;
         let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u64 = rt_in_32 as u64;
+        let rd_out_32: u64 = (rd_in & !MASK32) | rt_in_32 as u64;
 
         let rt_in_64: u64 = 0x00000000_80000000;
         let rd_out_64: u64 = sign_extend_u64::<32>(rt_in_64);
@@ -1853,7 +1833,7 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let rs_in: u64 = 0x11111111_11111111; // unused for DSLL
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_rtype_instr(
@@ -1875,7 +1855,7 @@ mod instrtest {
         // Regular shift
         let sa = 15;
         let rt_in: u64 = 0xFFFFFFFF_81234567;
-        let rd_out: u64 = sign_extend_u64::<32>((rt_in & 0xFFFFFFFF) << sa);
+        let rd_out: u64 = rt_in << sa;
 
         test_rtype_instr(
             "DSLL",
@@ -1893,10 +1873,9 @@ mod instrtest {
             RegSize::Reg64,
         );
 
-        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        // 32 bit mode should raise an exception
         let sa = 0;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out: u64 = sign_extend_u64::<32>(rt_in);
 
         test_rtype_instr(
             "DSLL",
@@ -1909,9 +1888,9 @@ mod instrtest {
             rs_in,
             rt_in,
             rd_in,
-            rd_out,
-            None,
-            RegSize::Reg64,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
         );
     }
 
@@ -1936,7 +1915,7 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let sa: u32 = 0; // unused for DSLLV
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // 32-bit mode should throw Reserved Instruction exception
         test_rtype_instr(
@@ -1958,7 +1937,7 @@ mod instrtest {
         // Regular shift
         let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in: u64 = 0xFFFFFFFF_81234567;
-        let rd_out: u64 = sign_extend_u64::<32>((rt_in & 0xFFFFFFFF) << (rs_in & 31));
+        let rd_out: u64 = (rt_in & 0xFFFFFFFF) << (rs_in & 0x3F);
 
         test_rtype_instr(
             "DSLLV",
@@ -1976,11 +1955,7 @@ mod instrtest {
             RegSize::Reg64,
         );
 
-        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
-        let rs_in: u64 = 0x00000000_00000000;
-        let rt_in: u64 = 0x00000000_80000000;
-        let rd_out: u64 = sign_extend_u64::<32>(rt_in);
-
+        // 32 bit should throw an exception
         test_rtype_instr(
             "DSLLV",
             OP,
@@ -1992,9 +1967,9 @@ mod instrtest {
             rs_in,
             rt_in,
             rd_in,
-            rd_out,
-            None,
-            RegSize::Reg64,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
         );
     }
 
@@ -2020,13 +1995,13 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let rs_in: u64 = 0x11111111_11111111; // unused for SRA
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // Regular shift
         let sa = 15;
         let rt_in: u64 = 0x00000000_81234567;
-        let rd_out_32: u32 = ((rt_in as i32) >> sa) as u32;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32 as u64);
+        let rd_out_32: u64 = (rd_in & !MASK32) | (((rt_in as i32) >> sa) as u32) as u64;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
 
         test_rtype_instr(
             "SRA",
@@ -2039,7 +2014,7 @@ mod instrtest {
             rs_in,
             rt_in,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -2063,8 +2038,8 @@ mod instrtest {
         // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
         let sa = 0;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out_32: u32 = rt_in as u32;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32 as u64);
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
 
         test_rtype_instr(
             "SRA",
@@ -2077,7 +2052,7 @@ mod instrtest {
             rs_in,
             rt_in,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -2106,9 +2081,9 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- sign_extend::<32 - sa>(GPR[rt] << (GPR[rs] & 31))
+    ///   - GPR[rd] <- sign_extend::<32 - sa>(GPR[rt] >> (GPR[rs] & 31))
     /// - 64-bit:
-    ///   - temp    <- sign_extend::<32 - sa>(GPR[rt] << (GPR[rs] & 31))
+    ///   - temp    <- sign_extend::<32 - sa>(GPR[rt] >> (GPR[rs] & 31))
     ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
     /// ## Exceptions:
     /// - None
@@ -2121,13 +2096,13 @@ mod instrtest {
         let rt: u32 = 2;
         let rd: u32 = 3;
         let sa: u32 = 0; // unused for SRAV
-        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // Regular shift
         let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in: u64 = 0x00000000_81234567;
-        let rd_out_32: u32 = ((rt_in as i32) >> (rs_in & 31)) as u32;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32 as u64);
+        let rd_out_32: u64 = (rd_in & !MASK32) | (((rt_in as i32) >> (rs_in & 31)) as u32) as u64;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
 
         test_rtype_instr(
             "SRAV",
@@ -2140,7 +2115,7 @@ mod instrtest {
             rs_in,
             rt_in,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -2164,8 +2139,8 @@ mod instrtest {
         // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
         let rs_in: u64 = 0x00000000_00000000;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out_32: u32 = rt_in as u32;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32 as u64);
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
 
         test_rtype_instr(
             "SRAV",
@@ -2178,7 +2153,7 @@ mod instrtest {
             rs_in,
             rt_in,
             rd_in,
-            rd_out_32 as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -2199,4 +2174,663 @@ mod instrtest {
             RegSize::Reg64,
         );
     }
+
+    /// Test the DSRA instruction.
+    ///
+    /// # DSRA:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- sign_extend::<64 - sa>(GPR[rt] >> sa)
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsra() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b111011;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for DSRA
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSRA",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let sa = 15;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out: u64 = ((rt_in as i64) >> sa) as u64;
+
+        test_rtype_instr(
+            "DSRA",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 64-bit mode)
+        let sa = 0;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = rt_in;
+
+        test_rtype_instr(
+            "DSRA",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSRAV instruction.
+    ///
+    /// # DSRAV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- sign_extend::<64 - sa>(GPR[rt] >> (GPR[rs] & 31))
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_dsrav() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b010111;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let sa: u32 = 0; // unused for DSRAV
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSRAV",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out: u64 = ((rt_in as i64) >> (rs_in & 63)) as u64;
+
+        test_rtype_instr(
+            "DSRAV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 64-bit mode)
+        let rs_in: u64 = 0x00000000_00000000;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = rt_in;
+
+        test_rtype_instr(
+            "DSRAV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSRA32 instruction.
+    ///
+    /// # DSRA32:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- sign_extend::<64 - (sa + 32)>(GPR[rt] >> (sa + 32))
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsra32() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b111111;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for DSRA32
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSRA32",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let sa = 15;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out: u64 = ((rt_in as i64) >> (sa + 32)) as u64;
+
+        test_rtype_instr(
+            "DSRA32",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the SRL instruction.
+    ///
+    /// # SRL:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rt] >> sa
+    /// - 64-bit:
+    ///   - temp    <- GPR[rt] >> sa
+    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_srl() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b000010;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for SRL
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // Regular shift
+        let sa = 15;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in as u32) >> sa) as u64;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+
+        test_rtype_instr(
+            "SRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (sign extend in 64-bit mode)
+        let sa = 0;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+
+        test_rtype_instr(
+            "SRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the SRLV instruction.
+    ///
+    /// # SRLV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - GPR[rd] <- GPR[rt] >> (GPR[rs] & 31)
+    /// - 64-bit:
+    ///   - temp    <- GPR[rt] >> (GPR[rs] & 31)
+    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_srlv() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b000110;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let sa: u32 = 0; // unused for SRLV
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // Regular shift
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in as u32) >> (rs_in & 31)) as u64;
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+
+        test_rtype_instr(
+            "SRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (sign extend in 64-bit mode)
+        let rs_in: u64 = 0x00000000_00000000;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
+        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+
+        test_rtype_instr(
+            "SRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "SRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSRL instruction.
+    ///
+    /// # DSRL:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rt] >> sa
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsrl() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b111011;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for DSRL
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let sa = 15;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out: u64 = rt_in >> sa;
+
+        test_rtype_instr(
+            "DSRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 64-bit mode)
+        let sa = 0;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = rt_in;
+
+        test_rtype_instr(
+            "DSRL",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSRLV instruction.
+    ///
+    /// # DSRLV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rt] >> (GPR[rs] & 31)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_dsrlv() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b010111;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let sa: u32 = 0; // unused for DSRLV
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out: u64 = rt_in >> (rs_in & 63);
+
+        test_rtype_instr(
+            "DSRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Shift by 0 (NOP in 64-bit mode)
+        let rs_in: u64 = 0x00000000_00000000;
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = rt_in;
+
+        test_rtype_instr(
+            "DSRLV",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DSRL32 instruction.
+    ///
+    /// # DSRL32:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - Reserved Instruction Exception
+    /// - 64-bit:
+    ///   - GPR[rd] <- GPR[rt] >> (sa + 32)
+    /// ## Exceptions:
+    /// - Reserved Instruction
+    #[test]
+    fn test_dsrl32() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b111111;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rs_in: u64 = 0x11111111_11111111; // unused for DSRL32
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        // 32-bit mode should throw Reserved Instruction exception
+        test_rtype_instr(
+            "DSRL32",
+            OP,
+            rs,
+            rt,
+            rd,
+            0u32,
+            FUNC,
+            0u64,
+            0u64,
+            rd_in,
+            rd_in,
+            Some(CpuException::ReservedInstruction),
+            RegSize::Reg32,
+        );
+
+        // Regular shift
+        let sa = 15;
+        let rt_in: u64 = 0x00000000_81234567;
+        let rd_out: u64 = rt_in >> (sa + 32);
+
+        test_rtype_instr(
+            "DSRL32",
+            OP,
+            rs,
+            rt,
+            rd,
+            sa,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out,
+            None,
+            RegSize::Reg64,
+        );
+    }
+    
 }
