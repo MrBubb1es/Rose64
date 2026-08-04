@@ -618,22 +618,14 @@ impl CpuVR4300 {
 
                 let rs = self.regs[instr.rs as usize] as i32;
                 let immediate = (instr.immediate as i16) as i32;
-                let sum = rs.wrapping_add(immediate) as u64;
+                let sum = rs.wrapping_add(immediate);
 
-                let mask = match self.reg_size {
-                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
+                let result = match self.reg_size {
+                    RegSize::Reg32 => (sum as u32) as u64,
+                    RegSize::Reg64 => (sum as i64) as u64,
                 };
 
-                // let result = match self.reg_size {
-                //     RegSize::Reg32 => (sum as u32) as u64,
-                //     RegSize::Reg64 => (sum as i64) as u64,
-                // };
-
-                self.regs[instr.rt as usize] &= !mask;
-                self.regs[instr.rt as usize] |= sum & mask;
-
-                // self.regs[instr.rt as usize] = result;
+                self.regs[instr.rt as usize] = result;
             }
             10 => {} // SLTI
             11 => {} // SLTIU
