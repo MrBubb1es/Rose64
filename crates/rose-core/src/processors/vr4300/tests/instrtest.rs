@@ -1268,7 +1268,7 @@ mod instrtest {
             (rs_in_32 as i64) as u64,
             (rt_in_32 as i64) as u64,
             rd_in,
-            (rd_out_32 as u32) as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
@@ -1414,7 +1414,7 @@ mod instrtest {
             (rs_in_32 as i64) as u64,
             (rt_in_32 as i64) as u64,
             rd_in,
-            (rd_out_32 as u32) as u64,
+            rd_out_32,
             None,
             RegSize::Reg32,
         );
