@@ -650,7 +650,7 @@ mod instrtest {
         let rd: u32 = 3;
 
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
-        let rt_in: u64 = 0xCAFEF00D_01230123;
+        let rt_in: u64 = 0xCAFEF00D_01230000;
         let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
         // Should not affect high 32-bits
         let rd_out_32: u64 = (rd_in & 0xFFFFFFFF_00000000) | (rs_in & rt_in & 0x00000000_FFFFFFFF);
@@ -685,6 +685,234 @@ mod instrtest {
             rt_in,
             rd_in,
             rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the ANDI instruction.
+    ///
+    /// # ANDI:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - GPR[rt] <- zero_extend::<16>(imm) || GPR[rs]
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_andi() {
+        const OP: u32 = 0b001100;
+
+        let rs: u32 = 4;
+        let rt: u32 = 5;
+        
+        let rs_in: u64 = 0xABCDEF01_23456789;
+        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let immediate: u16 = 0xFEED;
+        // Should not affect high 32-bits
+        let rt_out_32: u64 = (rt_in & 0xFFFFFFFF_00000000) | (rs_in & immediate as u64 & 0x00000000_FFFFFFFF);
+        // Affects full 64-bit register
+        let rt_out_64: u64 = rs_in & immediate as u64;
+
+        test_itype_instr(
+            "ANDI",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_itype_instr(
+            "ANDI",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the NOR instruction.
+    ///
+    /// # NOR:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - GPR[rd] <- GPR[rs] NOR GPR[rt]
+    /// - Mode determines bits affected.
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_nor() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100111;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+
+        let rs_in: u64 = 0xDEADC0DE_0123FEDC;
+        let rt_in: u64 = 0xCAFEF00D_01230000;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        // Should not affect high 32-bits
+        let rd_out_32: u64 = (rd_in & 0xFFFFFFFF_00000000) | ((!(rs_in | rt_in)) & 0x00000000_FFFFFFFF);
+        // Affects full 64-bit register
+        let rd_out_64: u64 = !(rs_in | rt_in);
+
+        test_rtype_instr(
+            "NOR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "NOR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the AND instruction.
+    ///
+    /// # AND:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    /// - Mode determines bits affected.
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_or() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100101;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+
+        let rs_in: u64 = 0xDEADC0DE_0123FEDC;
+        let rt_in: u64 = 0xCAFEF00D_01230000;
+        let rd_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        // Should not affect high 32-bits
+        let rd_out_32: u64 = (rd_in & 0xFFFFFFFF_00000000) | ((rs_in | rt_in) & 0x00000000_FFFFFFFF);
+        // Affects full 64-bit register
+        let rd_out_64: u64 = rs_in | rt_in;
+
+        test_rtype_instr(
+            "OR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_rtype_instr(
+            "OR",
+            OP,
+            rs,
+            rt,
+            rd,
+            SA,
+            FUNC,
+            rs_in,
+            rt_in,
+            rd_in,
+            rd_out_64,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the ANDI instruction.
+    ///
+    /// # ANDI:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - GPR[rt] <- zero_extend::<16>(imm) || GPR[rs]
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_ori() {
+        const OP: u32 = 0b001101;
+
+        let rs: u32 = 4;
+        let rt: u32 = 5;
+        
+        let rs_in: u64 = 0xABCDEF01_23456789;
+        let rt_in: u64 = 0xAAAAAAAA_AAAAAAAA;
+        let immediate: u16 = 0xFEED;
+        // Should not affect high 32-bits
+        let rt_out_32: u64 = (rt_in & 0xFFFFFFFF_00000000) | ((rs_in | immediate as u64) & 0x00000000_FFFFFFFF);
+        // Affects full 64-bit register
+        let rt_out_64: u64 = rs_in | immediate as u64;
+
+        test_itype_instr(
+            "ORI",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out_32,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_itype_instr(
+            "ORI",
+            OP,
+            rs,
+            rt,
+            rs_in,
+            rt_in,
+            immediate,
+            rt_out_64,
             None,
             RegSize::Reg64,
         );
