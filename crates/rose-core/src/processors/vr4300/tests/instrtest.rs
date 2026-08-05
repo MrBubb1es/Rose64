@@ -10,8 +10,6 @@
 mod instrtest {
     use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
 
-    const MASK32: u64 = 0x00000000_FFFFFFFF;
-
     macro_rules! itype_fail_str {
         () => {
             r#"
@@ -61,14 +59,34 @@ mod instrtest {
         };
     }
 
-    const fn sign_extend_u32<const WIDTH: usize>(value: u32) -> u32 {
-        let shift = 32 - WIDTH;
-        (((value as i32) << shift) >> shift) as u32
-    }
-
-    const fn sign_extend_u64<const WIDTH: usize>(value: u64) -> u64 {
-        let shift = 64 - WIDTH;
-        (((value as i64) << shift) >> shift) as u64
+    macro_rules! divmul_fail_str {
+        () => {
+            r#"
+{}:
+    Instruction:
+        Full = 0x{:08X}
+        Op = 0b{:06b}
+        rs = 0b{:05b}
+        rt = 0b{:05b}
+        rd = 0b00000
+        sa = 0b00000
+        func = 0b{:06b}
+    Input:
+        Mode = {:?}
+        rs = {}, GPR[rs] = {:016X}
+        rt = {}, GPR[rt] = {:016X}
+        rd = 0, GPR[rd] = 0000000000000000
+        HI = {:016X}
+        LO = {:016X}
+    Expected:
+        HI = {:016X}
+        LO = {:016X}
+        Exception = {:?}
+    Got:
+        HI = {:016X}
+        LO = {:016X}
+        Exception = {:?}"#
+        };
     }
 
     /// Builds an I-type isntruction from its components. See ITypeInstruciton
@@ -95,8 +113,39 @@ mod instrtest {
         immediate: u16,
         expected_rt_out: u64,
         expected_exception: Option<CpuException>,
-        reg_size: RegSize,
+        reg_size: Option<RegSize>,
     ) {
+        // If reg_size not given, test both.
+        if reg_size.is_none() {
+            test_itype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                immediate,
+                expected_rt_out,
+                expected_exception,
+                Some(RegSize::Reg32),
+            );
+            test_itype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                immediate,
+                expected_rt_out,
+                expected_exception,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
+
+        let reg_size = reg_size.unwrap();
+
         let mut cpu = CpuVR4300::new();
         let instr = itype_instr(op, rs, rt, immediate as u32);
 
@@ -165,8 +214,45 @@ mod instrtest {
         rd_in: u64,
         expected_rd_out: u64,
         expected_exception: Option<CpuException>,
-        reg_size: RegSize,
+        reg_size: Option<RegSize>,
     ) {
+        // If reg_size not given, test both.
+        if reg_size.is_none() {
+            test_rtype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rd,
+                sa,
+                func,
+                rs_in,
+                rt_in,
+                rd_in,
+                expected_rd_out,
+                expected_exception,
+                Some(RegSize::Reg32),
+            );
+            test_rtype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rd,
+                sa,
+                func,
+                rs_in,
+                rt_in,
+                rd_in,
+                expected_rd_out,
+                expected_exception,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
+
+        let reg_size = reg_size.unwrap();
+
         let mut cpu = CpuVR4300::new();
         let instr = rtype_instr(op, rs, rt, rd, sa, func);
 
@@ -229,6 +315,108 @@ mod instrtest {
         );
     }
 
+    /// Test the execution of a division or multiplication instruction.
+    fn test_divmul_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        func: u32,
+        rs_in: u64,
+        rt_in: u64,
+        hi_in: u64,
+        lo_in: u64,
+        expected_hi_out: u64,
+        expected_lo_out: u64,
+        expected_exception: Option<CpuException>,
+        reg_size: RegSize,
+    ) {
+        let mut cpu = CpuVR4300::new();
+        let instr = rtype_instr(op, rs, rt, 0, 0, func);
+
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.mult_hi = hi_in;
+        cpu.mult_lo = hi_in;
+        cpu.execute_instruction(instr);
+
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            divmul_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            func,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            hi_in,
+            lo_in,
+            expected_hi_out,
+            expected_lo_out,
+            expected_exception,
+            cpu.mult_hi,
+            cpu.mult_lo,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            cpu.mult_hi,
+            expected_hi_out,
+            divmul_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            func,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            hi_in,
+            lo_in,
+            expected_hi_out,
+            expected_lo_out,
+            expected_exception,
+            cpu.mult_hi,
+            cpu.mult_lo,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            cpu.mult_lo,
+            expected_lo_out,
+            divmul_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            func,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            hi_in,
+            lo_in,
+            expected_hi_out,
+            expected_lo_out,
+            expected_exception,
+            cpu.mult_hi,
+            cpu.mult_lo,
+            cpu.last_exception
+        );
+    }
+
     /// Test the ADD instruction.
     ///
     /// # ADD:
@@ -236,10 +424,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// - 64-bit:
-    ///   - temp    <- GPR[rs] + GPR[rt]
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rs] + GPR[rt]`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - Integer Overflow
     #[test]
@@ -254,54 +442,18 @@ mod instrtest {
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
-        let rs_in_32: u32 = 0x1001FEDC;
-        let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in_32 + rt_in_32) as u64;
-
-        let rs_in_64: u64 = 0x00000000_1001FEDC;
-        let rt_in_64: u64 = 0xFFFFFFFF_81234567;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rs_in_64 + rt_in_64);
+        let rs_in: u64 = 0x00000000_1001FEDC;
+        let rt_in: u64 = 0xFFFFFFFF_81234567;
+        let rd_out: u64 = ((rs_in as i32) + (rt_in as i32)) as u64;
 
         test_rtype_instr(
-            "ADD",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_32 as u64,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "ADD",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_64,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "ADD", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
         // Overflow test (output register unchanged)
-        let rs_in_32: u32 = 0xFFFFFFFF;
-        let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u64 = rd_in;
-
-        let rs_in_64: u64 = 0xFFFFFFFF_FFFFFFFF;
-        let rt_in_64: u64 = 0xFFFFFFFF_80000000;
-        let rd_out_64: u64 = rd_in;
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0xFFFFFFFF_80000000;
+        let rd_out: u64 = rd_in;
 
         test_rtype_instr(
             "ADD",
@@ -311,28 +463,12 @@ mod instrtest {
             rd,
             SA,
             FUNC,
-            rs_in_32 as u64,
-            rt_in_32 as u64,
+            rs_in,
+            rt_in,
             rd_in,
-            rd_out_32,
+            rd_out,
             Some(CpuException::IntegerOverflow),
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "ADD",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_64,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            Some(CpuException::IntegerOverflow),
-            RegSize::Reg64,
+            None,
         );
     }
 
@@ -343,10 +479,10 @@ mod instrtest {
     /// - I-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rt] <- GRP[rs] + sign_extend_u32::<16>(immediate)
+    ///   - `GPR[rt] <- GRP[rs] + sign_extend_u32::<16>(immediate)`
     /// - 64-bit:
-    ///   - temp    <- GPR[rs] + sign_extend_u64::<16>(immediate)
-    ///   - GPR[rt] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rs] + sign_extend_u64::<16>(immediate)`
+    ///   - `GPR[rt] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - Integer Overflow
     #[test]
@@ -359,74 +495,29 @@ mod instrtest {
 
         // No overflow
         let immediate: u16 = 0x0ACE;
-
-        let rs_in_32: u32 = 0x0ACE0987;
-        let rt_out_32: u64 =
-            (rt_in & !MASK32) | (sign_extend_u32::<16>(immediate as u32) + rs_in_32) as u64;
-
-        let rs_in_64: u64 = 0x00000000_0ACE0987;
-        let rt_out_64: u64 =
-            sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64) + rs_in_64);
+        let rs_in: u64 = 0x00000000_0ACE0987;
+        let rt_out: u64 = (((immediate as i16) as i32) + (rs_in as i32)) as u64;
 
         test_itype_instr(
-            "ADDI",
-            OP,
-            rs,
-            rt,
-            rs_in_32 as u64,
-            rt_in,
-            immediate,
-            rt_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_itype_instr(
-            "ADDI",
-            OP,
-            rs,
-            rt,
-            rs_in_64,
-            rt_in,
-            immediate,
-            rt_out_64,
-            None,
-            RegSize::Reg64,
+            "ADDI", OP, rs, rt, rs_in, rt_in, immediate, rt_out, None, None,
         );
 
         // Overflow test (output register unchanged)
         let immediate: u16 = 0x7FFF;
-
-        let rs_in_32: u32 = 0x7FFFFFFF;
-        let rt_out_32: u64 = rt_in;
-
-        let rs_in_64: u64 = 0x00000000_7FFFFFFF;
-        let rt_out_64: u64 = rt_in;
+        let rs_in: u64 = 0x00000000_7FFFFFFF;
+        let rt_out: u64 = rt_in;
 
         test_itype_instr(
             "ADDI",
             OP,
             rs,
             rt,
-            rs_in_32 as u64,
+            rs_in,
             rt_in,
             immediate,
-            rt_out_32,
+            rt_out,
             Some(CpuException::IntegerOverflow),
-            RegSize::Reg32,
-        );
-
-        test_itype_instr(
-            "ADDI",
-            OP,
-            rs,
-            rt,
-            rs_in_64,
-            rt_in,
-            immediate,
-            rt_out_64,
-            Some(CpuException::IntegerOverflow),
-            RegSize::Reg64,
+            None,
         );
     }
 
@@ -437,10 +528,10 @@ mod instrtest {
     /// - I-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rt] <- GRP[rs] + sign_extend_u32::<16>(immediate)
+    ///   - `GPR[rt] <- GRP[rs] + sign_extend_u32::<16>(immediate)`
     /// - 64-bit:
-    ///   - temp    <- GPR[rs] + sign_extend_u64::<16>(immediate)
-    ///   - GPR[rt] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rs] + sign_extend_u64::<16>(immediate)`
+    ///   - `GPR[rt] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -453,74 +544,20 @@ mod instrtest {
 
         // No overflow
         let immediate: u16 = 0x0ACE;
-
-        let rs_in_32: u32 = 0x0ACE0987;
-        let rt_out_32: u64 = (rt_in & !MASK32) | ((immediate as u32) + rs_in_32) as u64;
-
-        let rs_in_64: u64 = 0x00000000_0ACE0987;
-        let rt_out_64: u64 =
-            sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64) + rs_in_64);
+        let rs_in: u64 = 0x00000000_0ACE0987;
+        let rt_out: u64 = (((immediate as i16) as i32) + (rs_in as i32)) as u64;
 
         test_itype_instr(
-            "ADDIU",
-            OP,
-            rs,
-            rt,
-            rs_in_32 as u64,
-            rt_in,
-            immediate,
-            rt_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_itype_instr(
-            "ADDIU",
-            OP,
-            rs,
-            rt,
-            rs_in_64,
-            rt_in,
-            immediate,
-            rt_out_64,
-            None,
-            RegSize::Reg64,
+            "ADDIU", OP, rs, rt, rs_in, rt_in, immediate, rt_out, None, None,
         );
 
         // Overflow test
         let immediate: u16 = 0x7FFF;
-
-        let rs_in_32: u32 = 0x7FFFFFFF;
-        let rt_out_32: u64 = (rt_in & !MASK32) | ((immediate as u32).wrapping_add(rs_in_32)) as u64;
-
-        let rs_in_64: u64 = 0x00000000_7FFFFFFF;
-        let rt_out_64: u64 =
-            sign_extend_u64::<32>(sign_extend_u64::<16>(immediate as u64).wrapping_add(rs_in_64));
+        let rs_in: u64 = 0x00000000_7FFFFFFF;
+        let rt_out: u64 = (((immediate as i16) as i32).wrapping_add(rs_in as i32)) as u64;
 
         test_itype_instr(
-            "ADDI",
-            OP,
-            rs,
-            rt,
-            rs_in_32 as u64,
-            rt_in,
-            immediate,
-            rt_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_itype_instr(
-            "ADDI",
-            OP,
-            rs,
-            rt,
-            rs_in_64,
-            rt_in,
-            immediate,
-            rt_out_64,
-            None,
-            RegSize::Reg64,
+            "ADDI", OP, rs, rt, rs_in, rt_in, immediate, rt_out, None, None,
         );
     }
 
@@ -531,10 +568,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// - 64-bit:
-    ///   - temp    <- GPR[rs] + GPR[rt]
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rs] + GPR[rt]`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -549,85 +586,21 @@ mod instrtest {
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
-        let rs_in_32: u32 = 0x1001FEDC;
-        let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in_32 + rt_in_32) as u64;
-
-        let rs_in_64: u64 = 0x00000000_1001FEDC;
-        let rt_in_64: u64 = 0xFFFFFFFF_81234567;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rs_in_64 + rt_in_64);
+        let rs_in: u64 = 0x00000000_1001FEDC;
+        let rt_in: u64 = 0xFFFFFFFF_81234567;
+        let rd_out: u64 = ((rs_in as i32).wrapping_add(rt_in as i32)) as u64;
 
         test_rtype_instr(
-            "ADDU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_32 as u64,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "ADDU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_64,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "ADDU", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
         // Overflow test
-        let rs_in_32: u32 = 0xFFFFFFFF;
-        let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | rs_in_32.wrapping_add(rt_in_32) as u64;
-
-        let rs_in_64: u64 = 0xFFFFFFFF_FFFFFFFF;
-        let rt_in_64: u64 = 0xFFFFFFFF_80000000;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rs_in_64.wrapping_add(rt_in_64));
+        let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
+        let rt_in: u64 = 0xFFFFFFFF_80000000;
+        let rd_out: u64 = ((rs_in as i32).wrapping_add(rt_in as i32)) as u64;
 
         test_rtype_instr(
-            "ADDU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_32 as u64,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "ADDU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in_64,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "ADDU", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -638,8 +611,7 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit, 64-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
-    /// - Mode determines bits affected.
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -655,39 +627,10 @@ mod instrtest {
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
         let rt_in: u64 = 0xCAFEF00D_01230000;
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in & rt_in & MASK32);
-        let rd_out_64: u64 = rs_in & rt_in;
+        let rd_out: u64 = rs_in & rt_in;
 
         test_rtype_instr(
-            "AND",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "AND",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "AND", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -698,7 +641,7 @@ mod instrtest {
     /// - I-Type
     /// ## Operation:
     /// - 32-bit, 64-bit:
-    ///   - GPR[rt] <- zero_extend::<16>(imm) || GPR[rs]
+    ///   - `GPR[rt] <- imm || GPR[rs]`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -711,33 +654,10 @@ mod instrtest {
         let rs_in: u64 = 0xABCDEF01_23456789;
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
         let immediate: u16 = 0xFEED;
-        let rt_out_32: u64 = (rt_in & !MASK32) | (rs_in & immediate as u64 & MASK32);
-        let rt_out_64: u64 = rs_in & immediate as u64;
+        let rt_out: u64 = rs_in & immediate as u64;
 
         test_itype_instr(
-            "ANDI",
-            OP,
-            rs,
-            rt,
-            rs_in,
-            rt_in,
-            immediate,
-            rt_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_itype_instr(
-            "ANDI",
-            OP,
-            rs,
-            rt,
-            rs_in,
-            rt_in,
-            immediate,
-            rt_out_64,
-            None,
-            RegSize::Reg64,
+            "ANDI", OP, rs, rt, rs_in, rt_in, immediate, rt_out, None, None,
         );
     }
 
@@ -748,8 +668,7 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit, 64-bit:
-    ///   - GPR[rd] <- GPR[rs] NOR GPR[rt]
-    /// - Mode determines bits affected.
+    ///   - `GPR[rd] <- GPR[rs] NOR GPR[rt]`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -765,51 +684,21 @@ mod instrtest {
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
         let rt_in: u64 = 0xCAFEF00D_01230000;
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((!(rs_in | rt_in)) & MASK32);
-        let rd_out_64: u64 = !(rs_in | rt_in);
+        let rd_out: u64 = !(rs_in | rt_in);
 
         test_rtype_instr(
-            "NOR",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "NOR",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "NOR", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
-    /// Test the AND instruction.
+    /// Test the OR instruction.
     ///
-    /// # AND:
+    /// # OR:
     /// ## Type:
     /// - R-Type
     /// ## Operation:
     /// - 32-bit, 64-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
-    /// - Mode determines bits affected.
+    ///   - `GPR[rd] <- GPR[rs] | GPR[rt]`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -825,50 +714,21 @@ mod instrtest {
         let rs_in: u64 = 0xDEADC0DE_0123FEDC;
         let rt_in: u64 = 0xCAFEF00D_01230000;
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rs_in | rt_in) & MASK32);
-        let rd_out_64: u64 = rs_in | rt_in;
+        let rd_out: u64 = rs_in | rt_in;
 
         test_rtype_instr(
-            "OR",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "OR",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "OR", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
-    /// Test the ANDI instruction.
+    /// Test the ORI instruction.
     ///
-    /// # ANDI:
+    /// # ORI:
     /// ## Type:
     /// - I-Type
     /// ## Operation:
     /// - 32-bit, 64-bit:
-    ///   - GPR[rt] <- zero_extend::<16>(imm) || GPR[rs]
+    ///   - `GPR[rt] <- imm | GPR[rs]`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -881,33 +741,67 @@ mod instrtest {
         let rs_in: u64 = 0xABCDEF01_23456789;
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
         let immediate: u16 = 0xFEED;
-        let rt_out_32: u64 = (rt_in & !MASK32) | ((rs_in | immediate as u64) & MASK32);
-        let rt_out_64: u64 = rs_in | immediate as u64;
+        let rt_out: u64 = rs_in | immediate as u64;
 
         test_itype_instr(
-            "ORI",
-            OP,
-            rs,
-            rt,
-            rs_in,
-            rt_in,
-            immediate,
-            rt_out_32,
-            None,
-            RegSize::Reg32,
+            "ORI", OP, rs, rt, rs_in, rt_in, immediate, rt_out, None, None,
         );
+    }
+
+    /// Test the XOR instruction.
+    ///
+    /// # XOR:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - `GPR[rd] <- GPR[rs] ^ GPR[rt]`
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_xor() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b100110;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+
+        let rs_in: u64 = 0xDEADC0DE_0123FEDC;
+        let rt_in: u64 = 0xCAFEF00D_01230000;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let rd_out: u64 = rs_in ^ rt_in;
+
+        test_rtype_instr(
+            "XOR", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
+        );
+    }
+
+    /// Test the XORI instruction.
+    ///
+    /// # ANDI:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - GPR[rt] <- imm ^ GPR[rs]
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_xori() {
+        const OP: u32 = 0b001110;
+
+        let rs: u32 = 4;
+        let rt: u32 = 5;
+
+        let rs_in: u64 = 0xABCDEF01_23456789;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let immediate: u16 = 0xFEED;
+        let rt_out: u64 = rs_in ^ immediate as u64;
 
         test_itype_instr(
-            "ORI",
-            OP,
-            rs,
-            rt,
-            rs_in,
-            rt_in,
-            immediate,
-            rt_out_64,
-            None,
-            RegSize::Reg64,
+            "XORI", OP, rs, rt, rs_in, rt_in, immediate, rt_out, None, None,
         );
     }
 
@@ -920,7 +814,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// ## Exceptions:
     /// - Integer Overflow
     /// - Reserved Instruction
@@ -949,7 +843,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // No Overflow
@@ -970,7 +864,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Overflow test (output register unchanged)
@@ -991,7 +885,7 @@ mod instrtest {
             rd_in,
             rd_out,
             Some(CpuException::IntegerOverflow),
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -1004,7 +898,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)
+    ///   - `GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)`
     /// ## Exceptions:
     /// - Integer Overflow
     /// - Reserved Instruction
@@ -1027,14 +921,14 @@ mod instrtest {
             0u16,
             rt_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // No overflow
         let immediate: u16 = 0x0ACE;
 
         let rs_in: u64 = 0x0ACE0987_DEFACE00;
-        let rt_out: u64 = rs_in + sign_extend_u64::<16>(immediate as u64);
+        let rt_out: u64 = rs_in + (immediate as i16) as u64;
 
         test_itype_instr(
             "DADDI",
@@ -1046,7 +940,7 @@ mod instrtest {
             immediate,
             rt_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Overflow test (output register unchanged)
@@ -1065,7 +959,7 @@ mod instrtest {
             immediate,
             rt_out,
             Some(CpuException::IntegerOverflow),
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -1078,7 +972,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// ## Exceptions:
     /// - Reserved Instruction
     #[test]
@@ -1106,7 +1000,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // No Overflow
@@ -1127,7 +1021,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Overflow test (no exception should occur)
@@ -1148,7 +1042,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -1161,7 +1055,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)
+    ///   - `GPR[rt] <- GPR[rs] + sign_extend_u64::<16>(imm)`
     /// ## Exceptions:
     /// - Reserved Instruction
     #[test]
@@ -1183,14 +1077,14 @@ mod instrtest {
             0u16,
             rt_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // No overflow
         let immediate: u16 = 0x0ACE;
 
         let rs_in: u64 = 0x0ACE0987_DEFACE00;
-        let rt_out: u64 = rs_in + sign_extend_u64::<16>(immediate as u64);
+        let rt_out: u64 = rs_in + (immediate as i16) as u64;
 
         test_itype_instr(
             "DADDIU",
@@ -1202,14 +1096,14 @@ mod instrtest {
             immediate,
             rt_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Overflow test (output register unchanged)
         let immediate: u16 = 0xFFFF;
 
         let rs_in: u64 = 0x80000000_00000000;
-        let rt_out: u64 = rs_in.wrapping_add(sign_extend_u64::<16>(immediate as u64));
+        let rt_out: u64 = rs_in.wrapping_add((immediate as i16) as u64);
 
         test_itype_instr(
             "DADDIU",
@@ -1221,7 +1115,7 @@ mod instrtest {
             immediate,
             rt_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -1232,10 +1126,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// - 64-bit:
     ///   - temp    <- GPR[rs] + GPR[rt]
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - Integer Overflow
     #[test]
@@ -1250,52 +1144,18 @@ mod instrtest {
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
-        let rs_in_32: i32 = 99;
-        let rt_in_32: i32 = 10;
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rs_in_32 - rt_in_32) as u32) as u64;
-
-        let rs_in_64: i32 = 5002;
-        let rt_in_64: i32 = 963;
-        let rd_out_64: u64 = sign_extend_u64::<32>((rs_in_64 - rt_in_64) as u64);
+        let rs_in: u64 = 5002;
+        let rt_in: u64 = 963;
+        let rd_out: u64 = (rs_in - rt_in) as u64;
 
         test_rtype_instr(
-            "SUB",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_32 as i64) as u64,
-            (rt_in_32 as i64) as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SUB",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_64 as i64) as u64,
-            (rt_in_64 as i64) as u64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SUB", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
         // Overflow test (output register unchanged)
-        let rs_in_32: i32 = i32::MIN;
-        let rt_in_32: i32 = 1;
-
-        let rs_in_64: i32 = i32::MIN;
-        let rt_in_64: i32 = 1;
+        let rs_in: u64 = i32::MIN as u64;
+        let rt_in: u64 = 1;
+        let rd_out: u64 = rd_in;
 
         test_rtype_instr(
             "SUB",
@@ -1305,28 +1165,12 @@ mod instrtest {
             rd,
             SA,
             FUNC,
-            (rs_in_32 as i64) as u64,
-            (rt_in_32 as i64) as u64,
+            rs_in,
+            rt_in,
             rd_in,
-            rd_in,
+            rd_out,
             Some(CpuException::IntegerOverflow),
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SUB",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_64 as i64) as u64,
-            (rt_in_64 as i64) as u64,
-            rd_in,
-            rd_in,
-            Some(CpuException::IntegerOverflow),
-            RegSize::Reg64,
+            None,
         );
     }
 
@@ -1337,10 +1181,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- GPR[rs] + GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] + GPR[rt]`
     /// - 64-bit:
-    ///   - temp    <- GPR[rs] + GPR[rt]
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rs] + GPR[rt]`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -1355,85 +1199,21 @@ mod instrtest {
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         // No overflow
-        let rs_in_32: i32 = 99;
-        let rt_in_32: i32 = 10;
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rs_in_32 - rt_in_32) as u32) as u64;
-
-        let rs_in_64: i32 = 5002;
-        let rt_in_64: i32 = 963;
-        let rd_out_64: u64 = sign_extend_u64::<32>((rs_in_64 - rt_in_64) as u64);
+        let rs_in: u64 = 5002;
+        let rt_in: u64 = 963;
+        let rd_out: u64 = ((rs_in - rt_in) as i32) as u64;
 
         test_rtype_instr(
-            "SUBU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_32 as i64) as u64,
-            (rt_in_32 as i64) as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SUBU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_64 as i64) as u64,
-            (rt_in_64 as i64) as u64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SUBU", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
         // Overflow test (no exception occurs)
-        let rs_in_32: i32 = i32::MIN;
-        let rt_in_32: i32 = 1;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rs_in_32.wrapping_sub(rt_in_32) as u32) as u64;
-
-        let rs_in_64: i32 = i32::MIN;
-        let rt_in_64: i32 = 1;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rs_in_64.wrapping_sub(rt_in_64) as u64);
+        let rs_in: u64 = i32::MIN as u64;
+        let rt_in: u64 = 1;
+        let rd_out: u64 = (rs_in.wrapping_sub(rt_in) as i32) as u64;
 
         test_rtype_instr(
-            "SUBU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_32 as i64) as u64,
-            (rt_in_32 as i64) as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SUBU",
-            OP,
-            rs,
-            rt,
-            rd,
-            SA,
-            FUNC,
-            (rs_in_64 as i64) as u64,
-            (rt_in_64 as i64) as u64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SUBU", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -1446,7 +1226,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- GPR[rs] - GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] - GPR[rt]`
     /// ## Exceptions:
     /// - Integer Overflow
     /// - Reserved Instruction
@@ -1475,7 +1255,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // No overflow
@@ -1496,7 +1276,7 @@ mod instrtest {
             rd_in,
             rd_out as u64,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Overflow test (output register unchanged)
@@ -1516,7 +1296,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::IntegerOverflow),
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -1529,7 +1309,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- GPR[rs] - GPR[rt]
+    ///   - `GPR[rd] <- GPR[rs] - GPR[rt]`
     /// ## Exceptions:
     /// - Reserved Instruction
     #[test]
@@ -1557,7 +1337,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // No overflow
@@ -1578,7 +1358,7 @@ mod instrtest {
             rd_in,
             rd_out as u64,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Overflow test (no exception occurs)
@@ -1599,7 +1379,7 @@ mod instrtest {
             rd_in,
             rd_out as u64,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -1610,10 +1390,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- GPR[rt] << sa
+    ///   - `GPR[rd] <- GPR[rt] << sa`
     /// - 64-bit:
-    ///   - temp    <- GPR[rt] << sa
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rt] << sa`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -1629,82 +1409,20 @@ mod instrtest {
 
         // Regular shift
         let sa = 15;
-        let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in_32 << sa) as u64;
-
-        let rt_in_64: u64 = 0xFFFFFFFF_81234567;
-        let rd_out_64: u64 = sign_extend_u64::<32>((rt_in_64 & 0xFFFFFFFF) << sa);
+        let rt_in: u64 = 0xFFFFFFFF_81234567;
+        let rd_out: u64 = ((rt_in as i32) << sa) as u64;
 
         test_rtype_instr(
-            "SLL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
+            "SLL", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
-        test_rtype_instr(
-            "SLL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
-        );
-
-        // Shift by 0 (sign extend in 64-bit mode)
+        // Shift by 0 (should sign extend)
         let sa = 0;
-        let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | rt_in_32 as u64;
-
-        let rt_in_64: u64 = 0x00000000_80000000;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rt_in_64);
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = (rt_in as i32) as u64;
 
         test_rtype_instr(
-            "SLL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SLL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SLL", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -1715,10 +1433,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- GPR[rt] << (GPR[rs] & 31)
+    ///   - `GPR[rd] <- GPR[rt] << (GPR[rs] & 31)`
     /// - 64-bit:
-    ///   - temp    <- GPR[rt] << (GPR[rs] & 31)
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- GPR[rt] << (GPR[rs] & 31)`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
     #[test]
@@ -1734,82 +1452,20 @@ mod instrtest {
 
         // Regular shift
         let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
-        let rt_in_32: u32 = 0x81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in_32 << (rs_in & 31)) as u64;
-
-        let rt_in_64: u64 = 0xFFFFFFFF_81234567;
-        let rd_out_64: u64 = sign_extend_u64::<32>((rt_in_64 & 0xFFFFFFFF) << (rs_in & 31));
+        let rt_in: u64 = 0xFFFFFFFF_81234567;
+        let rd_out: u64 = ((rt_in << (rs_in & 31)) as i32) as u64;
 
         test_rtype_instr(
-            "SLLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
+            "SLLV", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
-        test_rtype_instr(
-            "SLLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
-        );
-
-        // Shift by 0 (sign extend in 64-bit mode)
+        // Shift by 0 (should sign extend)
         let rs_in: u64 = 0x00000000_00000000;
-        let rt_in_32: u32 = 0x80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | rt_in_32 as u64;
-
-        let rt_in_64: u64 = 0x00000000_80000000;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rt_in_64);
+        let rt_in: u64 = 0x00000000_80000000;
+        let rd_out: u64 = (rt_in as i32) as u64;
 
         test_rtype_instr(
-            "SLLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_32 as u64,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SLLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in_64,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SLLV", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -1822,7 +1478,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- GPR[rt] << sa
+    ///   - `GPR[rd] <- GPR[rt] << sa`
     /// ## Exceptions:
     /// - Reserved Instruction
     #[test]
@@ -1850,7 +1506,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -1871,7 +1527,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // 32 bit mode should raise an exception
@@ -1891,7 +1547,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
     }
 
@@ -1904,7 +1560,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- GPR[rt] << (GPR[rs] & 31)
+    ///   - `GPR[rd] <- GPR[rt] << (GPR[rs] & 31)`
     /// ## Exceptions:
     /// - Reserved Instruction
     #[test]
@@ -1932,7 +1588,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -1953,7 +1609,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // 32 bit should throw an exception
@@ -1970,7 +1626,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
     }
 
@@ -2007,77 +1663,19 @@ mod instrtest {
         // HARDWARE BUG (32-bit mode):
         //   Causes rd_out_32 to contain 0's in the high bits after the shift.
         //   As the 32-bit rt_in is signed, without the but there would be 1's.
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in >> sa) as u32) as u64;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = ((rt_in >> sa) as i32) as u64;
 
         test_rtype_instr(
-            "SRA",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
+            "SRA", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
-        test_rtype_instr(
-            "SRA",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
-        );
-
-        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        // Shift by 0 (should sign extend)
         let sa = 0;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = (rt_in as i32) as u64;
 
         test_rtype_instr(
-            "SRA",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SRA",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SRA", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -2088,10 +1686,10 @@ mod instrtest {
     /// - R-Type
     /// ## Operation:
     /// - 32-bit:
-    ///   - GPR[rd] <- sign_extend::<32 - sa>(GPR[rt] >> (GPR[rs] & 31))
+    ///   - `GPR[rd] <- sign_extend::<32 - sa>(GPR[rt] >> (GPR[rs] & 31))`
     /// - 64-bit:
-    ///   - temp    <- sign_extend::<32 - sa>(GPR[rt] >> (GPR[rs] & 31))
-    ///   - GPR[rd] <- sign_extend_u64::<32>(temp)
+    ///   - `temp    <- sign_extend::<32 - sa>(GPR[rt] >> (GPR[rs] & 31))`
+    ///   - `GPR[rd] <- sign_extend_u64::<32>(temp)`
     /// ## Exceptions:
     /// - None
     /// ## HARDWARE BUG (32-bit mode):
@@ -2114,77 +1712,19 @@ mod instrtest {
         // HARDWARE BUG (32-bit mode):
         //   Causes rd_out_32 to contain 0's in the high bits after the shift.
         //   As the 32-bit rt_in is signed, without the but there would be 1's.
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in >> (rs_in & 31)) as u32) as u64;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = (((rt_in as i64) >> (rs_in & 31)) as i32) as u64;
 
         test_rtype_instr(
-            "SRAV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
+            "SRAV", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
-        test_rtype_instr(
-            "SRAV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
-        );
-
-        // Shift by 0 (NOP in 32-bit mode, sign extend in 64-bit mode)
+        // Shift by 0 (should sign extend)
         let rs_in: u64 = 0x00000000_00000000;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = (rt_in as i32) as u64;
 
         test_rtype_instr(
-            "SRAV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SRAV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SRAV", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -2197,7 +1737,7 @@ mod instrtest {
     /// - 32-bit:
     ///   - Reserved Instruction Exception
     /// - 64-bit:
-    ///   - GPR[rd] <- sign_extend::<64 - sa>(GPR[rt] >> sa)
+    ///   - `GPR[rd] <- sign_extend::<64 - sa>(GPR[rt] >> sa)`
     /// ## Exceptions:
     /// - Reserved Instruction
     #[test]
@@ -2225,7 +1765,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -2246,7 +1786,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Shift by 0 (NOP in 64-bit mode)
@@ -2267,7 +1807,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -2308,7 +1848,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -2329,7 +1869,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Shift by 0 (NOP in 64-bit mode)
@@ -2350,7 +1890,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -2391,7 +1931,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -2412,7 +1952,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -2443,77 +1983,19 @@ mod instrtest {
         // Regular shift
         let sa = 15;
         let rt_in: u64 = 0x00000000_81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in as u32) >> sa) as u64;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = ((rt_in >> sa) as u32) as u64;
 
         test_rtype_instr(
-            "SRL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SRL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SRL", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
         // Shift by 0 (sign extend in 64-bit mode)
         let sa = 0;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = (rt_in as i32) as u64;
 
         test_rtype_instr(
-            "SRL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SRL",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SRL", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -2544,77 +2026,19 @@ mod instrtest {
         // Regular shift
         let rs_in: u64 = 0xFFFFFFFF_FFFFFFFF;
         let rt_in: u64 = 0x00000000_81234567;
-        let rd_out_32: u64 = (rd_in & !MASK32) | ((rt_in as u32) >> (rs_in & 31)) as u64;
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = (((rt_in as u32) >> (rs_in & 31)) as i32) as u64;
 
         test_rtype_instr(
-            "SRLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SRLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SRLV", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
 
         // Shift by 0 (sign extend in 64-bit mode)
         let rs_in: u64 = 0x00000000_00000000;
         let rt_in: u64 = 0x00000000_80000000;
-        let rd_out_32: u64 = (rd_in & !MASK32) | (rt_in & MASK32);
-        let rd_out_64: u64 = sign_extend_u64::<32>(rd_out_32);
+        let rd_out: u64 = (rt_in as i32) as u64;
 
         test_rtype_instr(
-            "SRLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_32,
-            None,
-            RegSize::Reg32,
-        );
-
-        test_rtype_instr(
-            "SRLV",
-            OP,
-            rs,
-            rt,
-            rd,
-            sa,
-            FUNC,
-            rs_in,
-            rt_in,
-            rd_in,
-            rd_out_64,
-            None,
-            RegSize::Reg64,
+            "SRLV", OP, rs, rt, rd, sa, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
         );
     }
 
@@ -2655,7 +2079,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -2676,7 +2100,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Shift by 0 (NOP in 64-bit mode)
@@ -2697,7 +2121,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -2738,7 +2162,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -2759,7 +2183,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
 
         // Shift by 0 (NOP in 64-bit mode)
@@ -2780,7 +2204,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -2821,7 +2245,7 @@ mod instrtest {
             rd_in,
             rd_in,
             Some(CpuException::ReservedInstruction),
-            RegSize::Reg32,
+            Some(RegSize::Reg32),
         );
 
         // Regular shift
@@ -2842,7 +2266,7 @@ mod instrtest {
             rd_in,
             rd_out,
             None,
-            RegSize::Reg64,
+            Some(RegSize::Reg64),
         );
     }
 
@@ -2867,73 +2291,30 @@ mod instrtest {
         let rd: u32 = 3;
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
-        let test32 = |rs_in: u64, rt_in: u64| {
-            let rs_cmp_32 = rs_in as i32;
-            let rt_cmp_32 = rt_in as i32;
-            let rd_out_32 = (rd_in & !MASK32) | if rs_cmp_32 < rt_cmp_32 { 1 } else { 0 };
+        let test = |rs_in: u64, rt_in: u64| {
+            let rs_cmp: i64 = rs_in as i64;
+            let rt_cmp: i64 = rt_in as i64;
+            let rd_out: u64 = if rs_cmp < rt_cmp { 1 } else { 0 };
 
             test_rtype_instr(
-                "SLT",
-                OP,
-                rs,
-                rt,
-                rd,
-                SA,
-                FUNC,
-                rs_in,
-                rt_in,
-                rd_in,
-                rd_out_32,
-                None,
-                RegSize::Reg32,
-            );
-        };
-
-        let test64 = |rs_in: u64, rt_in: u64| {
-            let rs_cmp_64 = rs_in as i64;
-            let rt_cmp_64 = rt_in as i64;
-            let rd_out_64 = if rs_cmp_64 < rt_cmp_64 { 1 } else { 0 };
-
-            test_rtype_instr(
-                "SLT",
-                OP,
-                rs,
-                rt,
-                rd,
-                SA,
-                FUNC,
-                rs_in,
-                rt_in,
-                rd_in,
-                rd_out_64,
-                None,
-                RegSize::Reg64,
+                "SLT", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
             );
         };
 
         // Condition true
-        test32(
-            0x00000000_FFFFFFEE, // -18
-            0xFFFFFFFF_00000000, // 0
-        );
-        test64(
+        test(
             0xFFFFFFFF_FFFFFFEE, // -18
             0x00000000_00000000, // 0
         );
 
         // Condition false
-        test32(
-            0xFFFFFFFF_00000000, // 0
-            0x00000000_FFFFFFEE, // -18
-        );
-        test64(
+        test(
             0x00000000_00000000, // 0
             0xFFFFFFFF_FFFFFFEE, // -18
         );
 
         // Inputs equal (should produce 0)
-        test32(0xABCDEF01_23456789, 0xABCDEF01_23456789);
-        test64(0xABCDEF01_23456789, 0xABCDEF01_23456789);
+        test(0xABCDEF01_23456789, 0xABCDEF01_23456789);
     }
 
     /// Test the SLTI instruction.
@@ -2956,67 +2337,29 @@ mod instrtest {
         let rt: u32 = 2;
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
-        let test32 = |rs_in: u64, imm: u16| {
-            let rs_cmp_32: i32 = rs_in as i32;
-            let imm_cmp_32: i32 = sign_extend_u32::<16>(imm as u32) as i32;
-            let rt_out_32: u64 = (rt_in & !MASK32) | if rs_cmp_32 < imm_cmp_32 { 1 } else { 0 };
+        let test = |rs_in: u64, imm: u16| {
+            let rs_cmp: i64 = rs_in as i64;
+            let imm_cmp: i64 = (imm as i16) as i64;
+            let rt_out: u64 = if rs_cmp < imm_cmp { 1 } else { 0 };
 
-            test_itype_instr(
-                "SLTI",
-                OP,
-                rs,
-                rt,
-                rs_in,
-                rt_in,
-                imm,
-                rt_out_32,
-                None,
-                RegSize::Reg32,
-            );
-        };
-
-        let test64 = |rs_in: u64, imm: u16| {
-            let rs_cmp_64: i64 = rs_in as i64;
-            let imm_cmp_64: i64 = sign_extend_u64::<16>(imm as u64) as i64;
-            let rt_out_64: u64 = if rs_cmp_64 < imm_cmp_64 { 1 } else { 0 };
-
-            test_itype_instr(
-                "SLTI",
-                OP,
-                rs,
-                rt,
-                rs_in,
-                rt_in,
-                imm,
-                rt_out_64,
-                None,
-                RegSize::Reg64,
-            );
+            test_itype_instr("SLTI", OP, rs, rt, rs_in, rt_in, imm, rt_out, None, None);
         };
 
         // Condition true
-        test32(
-            0x00000000_FFFFFFEE, // GPR[rs] = -18
-            0x0000,              // imm = 0
-        );
-        test64(
+        test(
             0xFFFFFFFF_FFFFFFEE, // GPR[rs] = -18
             0x0000,              // imm = 0
         );
 
         // Condition false
-        test32(
-            0x00000000_00000000, // GPR[rs] = 0
-            0xFFEE,              // imm = -18
-        );
-        test64(
+        test(
             0x00000000_00000000, // GPR[rs] = 0
             0xFFEE,              // imm = -18
         );
 
         // Inputs equal (should produce 0)
-        test32(0x00000000_00007F8A, 0x7F8A);
-        test64(0xFFFFFFFF_FFFFFF8A, 0xFF8A);
+        test(0x00000000_00007F8A, 0x7F8A);
+        test(0xFFFFFFFF_FFFFFF8A, 0xFF8A);
     }
 
     /// Test the SLTU instruction.
@@ -3040,64 +2383,22 @@ mod instrtest {
         let rd: u32 = 3;
         let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
-        let test32 = |rs_in: u64, rt_in: u64| {
-            let rs_cmp_32: u32 = rs_in as u32;
-            let rt_cmp_32: u32 = rt_in as u32;
-            let rd_out_32: u64 = (rd_in & !MASK32) | if rs_cmp_32 < rt_cmp_32 { 1 } else { 0 };
+        let test = |rs_in: u64, rt_in: u64| {
+            let rd_out: u64 = if rs_in < rt_in { 1 } else { 0 };
 
             test_rtype_instr(
-                "SLTU",
-                OP,
-                rs,
-                rt,
-                rd,
-                SA,
-                FUNC,
-                rs_in,
-                rt_in,
-                rd_in,
-                rd_out_32,
-                None,
-                RegSize::Reg32,
-            );
-        };
-
-        let test64 = |rs_in: u64, rt_in: u64| {
-            let rs_cmp_64: u64 = rs_in;
-            let rt_cmp_64: u64 = rt_in;
-            let rd_out_64: u64 = if rs_cmp_64 < rt_cmp_64 { 1 } else { 0 };
-
-            test_rtype_instr(
-                "SLTU",
-                OP,
-                rs,
-                rt,
-                rd,
-                SA,
-                FUNC,
-                rs_in,
-                rt_in,
-                rd_in,
-                rd_out_64,
-                None,
-                RegSize::Reg64,
+                "SLTU", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
             );
         };
 
         // Condition true
-        test32(
-            0xFFFFFFFF_FF000000, // GPR[rs] = 4,278,190,080
-            0x00000000_FFFF8000, // GPR[rt] = 4,294,934,528
-        );
-        test64(0x00000000_FF000000, 0xFFFFFFFF_FFFF8000);
+        test(0x00000000_FF000000, 0xFFFFFFFF_FFFF8000);
 
         // Condition false
-        test32(0x00000000_00005000, 0x00000000_00004FFF);
-        test64(0xFFFFFFFF_FFFFFFFF, 0x00000000_00000000);
+        test(0xFFFFFFFF_FFFFFFFF, 0x00000000_00000000);
 
         // Inputs equal (should produce 0)
-        test32(0x99999999_23232323, 0x10101010_23232323);
-        test64(0x34343434_56789ABC, 0x34343434_56789ABC);
+        test(0x34343434_56789ABC, 0x34343434_56789ABC);
     }
 
     /// Test the SLTIU instruction.
@@ -3120,60 +2421,258 @@ mod instrtest {
         let rt: u32 = 2;
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
-        let test32 = |rs_in: u64, imm: u16| {
-            let rs_cmp_32: u32 = rs_in as u32;
-            let imm_cmp_32: u32 = sign_extend_u32::<16>(imm as u32);
-            let rt_out_32: u64 = (rt_in & !MASK32) | if rs_cmp_32 < imm_cmp_32 { 1 } else { 0 };
+        let test = |rs_in: u64, imm: u16| {
+            let imm_cmp: u64 = (imm as i16) as u64;
+            let rt_out: u64 = if rs_in < imm_cmp { 1 } else { 0 };
 
-            test_itype_instr(
-                "SLTIU",
-                OP,
-                rs,
-                rt,
-                rs_in,
-                rt_in,
-                imm,
-                rt_out_32,
-                None,
-                RegSize::Reg32,
-            );
-        };
-
-        let test64 = |rs_in: u64, imm: u16| {
-            let rs_cmp_64: u64 = rs_in;
-            let imm_cmp_64: u64 = sign_extend_u64::<16>(imm as u64);
-            let rt_out_64: u64 = if rs_cmp_64 < imm_cmp_64 { 1 } else { 0 };
-
-            test_itype_instr(
-                "SLTIU",
-                OP,
-                rs,
-                rt,
-                rs_in,
-                rt_in,
-                imm,
-                rt_out_64,
-                None,
-                RegSize::Reg64,
-            );
+            test_itype_instr("SLTIU", OP, rs, rt, rs_in, rt_in, imm, rt_out, None, None);
         };
 
         // Condition true
-        test32(
-            0x00000000_FF000000, // GPR[rs] = 4,278,190,080
-            0x8000,              // imm = 32,768 -> 4,294,934,528
-        );
-        test64(0xFFFFFFFF_FF000000, 0x8000);
+        test(0xFFFFFFFF_FF000000, 0x8000);
 
         // Condition false
-        test32(0x00000000_00000000, 0xFFEE);
-        test64(
+        test(0x00000000_00000000, 0xFFEE);
+        test(
             0x00000000_00000000, // GPR[rs] = 0
             0x0001,              // imm = 1
         );
 
         // Inputs equal (should produce 0)
-        test32(0x00000000_FFFF8000, 0x8000);
-        test64(0xFFFFFFFF_FFFF8055, 0x8055);
+        test(0xFFFFFFFF_FFFF8055, 0x8055);
+    }
+
+    /// Test the DIV instruction when `GPR[rt] != 0`.
+    ///
+    /// # DIV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - `LO <- GPR[rs] / GPR[rt]` (signed division)
+    ///   - `HI <- GPR[rs] % GPR[rt]`
+    /// - 64-bit:
+    ///   - `q <- GPR[rs] / GPR[rt]` (signed division)
+    ///   - `r <- GPR[rs] % GPR[rt]`
+    ///   - `LO <- sign_extend_u64::<32>(q)`
+    ///   - `HI <- sign_extend_u64::<32>(r)`
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_div_happy_path() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b011010;
+
+        let rs = 1;
+        let rt = 2;
+        let hi_in = 0xAAAAAAAA_BBBBBBBB;
+        let lo_in = 0xCCCCCCCC_DDDDDDDD;
+
+        // Test 1:
+        //   GPR[rs] = 599
+        //   GPR[rt] = 144
+        //   Expected HI = 599 / 144 = 4
+        //   Expected LO = 599 % 144 = 23
+        test_divmul_instr(
+            "DIV - Happy Path 1",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            599,
+            144,
+            hi_in,
+            lo_in,
+            4,
+            23,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_divmul_instr(
+            "DIV - Happy Path 1",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            599,
+            144,
+            hi_in,
+            lo_in,
+            4,
+            23,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Test 2:
+        //   GPR[rs] = 78255
+        //   GPR[rt] = -94723
+        //   Expected HI = 78255 / -94723 = 0
+        //   Expected LO = 78255 % -94723 = 78255
+        test_divmul_instr(
+            "DIV - Happy Path 2",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            78255,
+            -94723i32 as u64,
+            hi_in,
+            lo_in,
+            0,
+            78255,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_divmul_instr(
+            "DIV - Happy Path 2",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            78255,
+            -94723i32 as u64,
+            hi_in,
+            lo_in,
+            0,
+            78255,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Test 2:
+        //   GPR[rs] = 1859307798
+        //   GPR[rt] = -19
+        //   Expected HI = 1859307798 / -19 = -97858305
+        //   Expected LO = 1859307798 % -19 = 3
+        test_divmul_instr(
+            "DIV - Happy Path 2",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            1859307798,
+            -19i32 as u64,
+            hi_in,
+            lo_in,
+            -97858305i32 as u64,
+            3,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_divmul_instr(
+            "DIV - Happy Path 2",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            1859307798,
+            -19i32 as u64,
+            hi_in,
+            lo_in,
+            -97858305i32 as u64,
+            3,
+            None,
+            RegSize::Reg64,
+        );
+    }
+
+    /// Test the DIV instruction when `GPR[rt] == 0`.
+    ///
+    /// # DIV:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - `LO <- (GPR[rs] < 0 ? 1 : -1)`
+    ///   - `HI <- sign_extend_u64::<32>(GPR[rs])`
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_div_unhappy_path() {
+        const OP: u32 = 0b000000;
+        const FUNC: u32 = 0b011010;
+
+        let rs = 1;
+        let rt = 2;
+        let hi_in = 0xAAAAAAAA_BBBBBBBB;
+        let lo_in = 0xCCCCCCCC_DDDDDDDD;
+
+        // Test 1:
+        //   GPR[rs] = 55
+        //   GPR[rt] = 0
+        //   Expected HI = 55
+        //   Expected LO = -1
+        test_divmul_instr(
+            "DIV - Unhappy Path 1",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            55,
+            0,
+            hi_in,
+            lo_in,
+            55,
+            -1i32 as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_divmul_instr(
+            "DIV - Unhappy Path 1",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            55,
+            0,
+            hi_in,
+            lo_in,
+            55,
+            -1i32 as u64,
+            None,
+            RegSize::Reg64,
+        );
+
+        // Test 2:
+        //   GPR[rs] = 0x00000000_80000000
+        //   GPR[rt] = 0
+        //   Expected HI = 55
+        //   Expected LO = 0xFFFFFFFF_80000000
+        test_divmul_instr(
+            "DIV - Unhappy Path 1",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            0x00000000_80000000,
+            0,
+            hi_in,
+            lo_in,
+            55,
+            -1i32 as u64,
+            None,
+            RegSize::Reg32,
+        );
+
+        test_divmul_instr(
+            "DIV - Unhappy Path 1",
+            OP,
+            rs,
+            rt,
+            FUNC,
+            55,
+            0,
+            hi_in,
+            lo_in,
+            55,
+            -1i32 as u64,
+            None,
+            RegSize::Reg64,
+        );
     }
 }
