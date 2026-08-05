@@ -7,20 +7,11 @@
 //! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
-use crate::{memory::bus::{Bus, MemoryAccess}, processors::vr4300::CpuException::IntegerOverflow};
-
-#[inline]
-pub const fn map_virtual_address(vaddr: u64) -> u32 {
-    let va = vaddr as u32;
-
-    match va {
-        0x00000000..=0x7FFFFFFF => 0, /* KUSEG */ // TODO: User Segment, TLB mapped
-        0x80000000..=0x9FFFFFFF => va - 0x80000000, /* KSEG0 */
-        0xA0000000..=0xBFFFFFFF => va - 0xA0000000, /* KSEG1 */
-        0xC0000000..=0xDFFFFFFF => 0, /* KSSEG */ // TODO: Kernel Supervisor segment, TLB mapped
-        0xE0000000..=0xFFFFFFFF => 0, /* KSEG3 */ // TODO: Kernel Segment 3, TLB mapped
-    }
-}
+use crate::{
+    common::hint::rose_unlikely,
+    memory::bus::{Bus, MemoryAccess},
+    processors::vr4300::CpuException::IntegerOverflow,
+};
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
@@ -141,6 +132,8 @@ pub enum RegSize {
 pub enum CpuException {
     IntegerOverflow,
     ReservedInstruction,
+    AddressErrorLoad,
+    AddressErrorStore,
 }
 
 impl CpuVR4300 {
@@ -749,16 +742,160 @@ impl CpuVR4300 {
         self.gpr[Self::ZR] = 0;
     }
 
-    fn read(&mut self, bus: &Bus, vaddr: u64) -> u32 {
-        let paddr = map_virtual_address(vaddr);
+    #[inline]
+    pub const fn translate_vaddr(&mut self, vaddr: u64) -> u32 {
+        let va = vaddr as u32;
 
-        bus.read32(paddr)
+        match va {
+            0x00000000..=0x7FFFFFFF => 0, /* KUSEG */ // TODO: User Segment, TLB mapped
+            0x80000000..=0x9FFFFFFF => va - 0x80000000, /* KSEG0 */
+            0xA0000000..=0xBFFFFFFF => va - 0xA0000000, /* KSEG1 */
+            0xC0000000..=0xDFFFFFFF => 0, /* KSSEG */ // TODO: Kernel Supervisor segment, TLB mapped
+            0xE0000000..=0xFFFFFFFF => 0, /* KSEG3 */ // TODO: Kernel Segment 3, TLB mapped
+        }
     }
 
-    fn write(&mut self, bus: &mut Bus, vaddr: u64, value: u32) {
-        let paddr = map_virtual_address(vaddr);
+    fn read8(&mut self, bus: &mut Bus, vaddr: u64) -> Result<u8, CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let va = vaddr as u32;
+
+        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+            return Ok(unsafe { ptr.read_unaligned() });
+        }
+
+        let paddr = self.translate_vaddr(vaddr);
+
+        Ok(bus.read8(paddr))
+    }
+
+    fn read16(&mut self, bus: &mut Bus, vaddr: u64) -> Result<u16, CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let va = vaddr as u32;
+
+        // Alignment check
+        if rose_unlikely(va & 1 != 0) {
+            return Err(CpuException::AddressErrorLoad);
+        }
+
+        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+            return Ok(unsafe { (ptr as *const u16).read_unaligned() });
+        }
+
+        let paddr = self.translate_vaddr(vaddr);
+
+        Ok(bus.read16(paddr))
+    }
+
+    fn read32(&mut self, bus: &mut Bus, vaddr: u64) -> Result<u32, CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let va = vaddr as u32;
+
+        // Alignment check
+        if rose_unlikely(va & 3 != 0) {
+            return Err(CpuException::AddressErrorLoad);
+        }
+
+        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+            return Ok(unsafe { (ptr as *const u32).read_unaligned() });
+        }
+
+        let paddr = self.translate_vaddr(vaddr);
+
+        Ok(bus.read32(paddr))
+    }
+
+    fn read64(&mut self, bus: &mut Bus, vaddr: u64) -> Result<u64, CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let hi = self.read32(bus, vaddr)? as u64;
+        let lo = self.read32(bus, vaddr + 4)? as u64;
+        Ok(hi << 32 | lo)
+    }
+
+    fn write8(&mut self, bus: &mut Bus, vaddr: u64, value: u8) -> Option<CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let va = vaddr as u32;
+
+        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+            unsafe {
+                ptr.write_unaligned(value);
+            }
+            return None;
+        }
+
+        let paddr = self.translate_vaddr(vaddr);
+
+        bus.write8(paddr, value);
+
+        None
+    }
+
+    fn write16(&mut self, bus: &mut Bus, vaddr: u64, value: u16) -> Option<CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let va = vaddr as u32;
+
+        // Alignment check
+        if rose_unlikely(va & 1 != 0) {
+            return Some(CpuException::AddressErrorStore);
+        }
+
+        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+            unsafe {
+                (ptr as *mut u16).write_unaligned(value);
+            }
+            return None;
+        }
+
+        let paddr = self.translate_vaddr(vaddr);
+
+        bus.write16(paddr, value);
+
+        None
+    }
+
+    fn write32(&mut self, bus: &mut Bus, vaddr: u64, value: u32) -> Option<CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        let va = vaddr as u32;
+
+        // Alignment check
+        if rose_unlikely(va & 3 != 0) {
+            return Some(CpuException::AddressErrorStore);
+        }
+
+        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+            unsafe {
+                (ptr as *mut u32).write_unaligned(value);
+            }
+            return None;
+        }
+
+        let paddr = self.translate_vaddr(vaddr);
 
         bus.write32(paddr, value);
+
+        None
+    }
+
+    fn write64(&mut self, bus: &mut Bus, vaddr: u64, value: u64) -> Option<CpuException> {
+        // Expect ROMS to use 32-bit addressing always
+        assert_eq!((vaddr as i32) as u64, vaddr);
+
+        self.write32(bus, vaddr, (value >> 32) as u32)?;
+        self.write32(bus, vaddr + 4, value as u32)?;
+        None
     }
 
     fn raise_exception(&mut self, e: CpuException) {

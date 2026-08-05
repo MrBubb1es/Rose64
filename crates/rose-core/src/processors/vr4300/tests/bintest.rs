@@ -16,6 +16,17 @@ mod bintest {
     const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-roms/vr4300-thar0/");
     const TEST_ROM_SIZE: usize = 8 * MB;
 
+    /// Translate a KSEG0 or KSEG1 virtual address to physical address space.
+    fn translate_vaddr_simple(vaddr: u32) -> u32 {
+        match vaddr {
+            0x00000000..=0x7FFFFFFF => 0,
+            0x80000000..=0x9FFFFFFF => vaddr - 0x80000000, /* KSEG0 */
+            0xA0000000..=0xBFFFFFFF => vaddr - 0xA0000000, /* KSEG1 */
+            0xC0000000..=0xDFFFFFFF => 0,
+            0xE0000000..=0xFFFFFFFF => 0,
+        }
+    }
+
     struct BinTestHeader {
         code_offset: u32,
         code_size: u32,
@@ -109,11 +120,17 @@ mod bintest {
         let mem_size = bin_test.header.memory_chunk_size;
 
         for i in 0..code_size {
-            bus.write8(code_start + i, bin_test.code_chunk[i as usize]);
+            bus.write8(
+                translate_vaddr_simple(code_start + i),
+                bin_test.code_chunk[i as usize],
+            );
         }
 
         for i in 0..mem_size {
-            bus.write8(mem_start + i, bin_test.initial_memory[i as usize]);
+            bus.write8(
+                translate_vaddr_simple(mem_start + i),
+                bin_test.initial_memory[i as usize],
+            );
         }
 
         cpu.gpr[CpuVR4300::LR] = MAGIC_RETURN_ADDRESS;
@@ -122,7 +139,7 @@ mod bintest {
 
         let mut instruction_count: usize = 0;
         for _ in 0..MAX_INSTRUCTIONS {
-            let instr = bus.read32(cpu.pc as u32);
+            let instr = bus.read32(translate_vaddr_simple(cpu.pc as u32));
             cpu.pc += 4;
 
             if is_jr_instr(instr) {
@@ -142,7 +159,7 @@ mod bintest {
         let mut memory_result = Vec::new();
 
         for i in 0..mem_size {
-            memory_result.push(bus.read8(mem_start + i));
+            memory_result.push(bus.read8(translate_vaddr_simple(mem_start + i)));
         }
 
         for i in 0..bin_test.header.memory_chunk_size as usize {

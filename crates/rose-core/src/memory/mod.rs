@@ -1,6 +1,5 @@
 pub mod bus;
-mod rdram;
+mod memory;
 mod rom;
 
-pub use rdram::Rdram;
 pub use rom::Rom;
