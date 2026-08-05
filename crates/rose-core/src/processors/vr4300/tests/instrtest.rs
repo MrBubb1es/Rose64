@@ -11,7 +11,7 @@ use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
 
 macro_rules! itype_fail_str {
     () => {
-            r#"
+        r#"
 {}:
     Instruction:
         Full = 0x{:08X}
@@ -34,7 +34,7 @@ macro_rules! itype_fail_str {
 
 macro_rules! rtype_fail_str {
     () => {
-            r#"
+        r#"
 {}:
     Instruction:
         Full = 0x{:08X}
@@ -60,7 +60,7 @@ macro_rules! rtype_fail_str {
 
 macro_rules! divmul_fail_str {
     () => {
-            r#"
+        r#"
 {}:
     Instruction:
         Full = 0x{:08X}
@@ -417,9 +417,9 @@ fn test_divmul_instr(
 }
 
 mod alu_instructions {
+    use super::{test_divmul_instr, test_itype_instr, test_rtype_instr};
     use crate::processors::vr4300::{CpuException, RegSize};
-    use super::{test_itype_instr, test_rtype_instr, test_divmul_instr};
-    
+
     /// Test the ADD instruction.
     ///
     /// # ADD:
@@ -2425,7 +2425,7 @@ mod alu_instructions {
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         let test = |rs_in: u64, imm: u16| {
-            let imm_cmp: u64 = (imm as i16) as u64;
+            let imm_cmp: u64 = imm as u64;
             let rt_out: u64 = if rs_in < imm_cmp { 1 } else { 0 };
 
             test_itype_instr("SLTIU", OP, rs, rt, rs_in, rt_in, imm, rt_out, None, None);
