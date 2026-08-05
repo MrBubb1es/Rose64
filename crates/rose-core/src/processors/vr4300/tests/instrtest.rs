@@ -7,11 +7,10 @@
 //! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
-mod instrtest {
-    use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
+use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
 
-    macro_rules! itype_fail_str {
-        () => {
+macro_rules! itype_fail_str {
+    () => {
             r#"
 {}:
     Instruction:
@@ -30,11 +29,11 @@ mod instrtest {
     Got:
         GPR[rt] = {:016X}
         Exception = {:?}"#
-        };
-    }
+    };
+}
 
-    macro_rules! rtype_fail_str {
-        () => {
+macro_rules! rtype_fail_str {
+    () => {
             r#"
 {}:
     Instruction:
@@ -56,11 +55,11 @@ mod instrtest {
     Got:
         GPR[rd] = {:016X}
         Exception = {:?}"#
-        };
-    }
+    };
+}
 
-    macro_rules! divmul_fail_str {
-        () => {
+macro_rules! divmul_fail_str {
+    () => {
             r#"
 {}:
     Instruction:
@@ -86,337 +85,341 @@ mod instrtest {
         HI = {:016X}
         LO = {:016X}
         Exception = {:?}"#
-        };
-    }
+    };
+}
 
-    /// Builds an I-type isntruction from its components. See ITypeInstruciton
-    /// struct for the layout diagram.
-    fn itype_instr(op: u32, rs: u32, rt: u32, immediate: u32) -> u32 {
-        (op << 26) | (rs << 21) | (rt << 16) | immediate
-    }
+/// Builds an I-type isntruction from its components. See ITypeInstruciton
+/// struct for the layout diagram.
+fn itype_instr(op: u32, rs: u32, rt: u32, immediate: u32) -> u32 {
+    (op << 26) | (rs << 21) | (rt << 16) | immediate
+}
 
-    /// Builds an R-type isntruction from its components. See RTypeInstruciton
-    /// struct for the layout diagram.
-    fn rtype_instr(op: u32, rs: u32, rt: u32, rd: u32, sa: u32, func: u32) -> u32 {
-        (op << 26) | (rs << 21) | (rt << 16) | (rd << 11) | (sa << 6) | func
-    }
+/// Builds an R-type isntruction from its components. See RTypeInstruciton
+/// struct for the layout diagram.
+fn rtype_instr(op: u32, rs: u32, rt: u32, rd: u32, sa: u32, func: u32) -> u32 {
+    (op << 26) | (rs << 21) | (rt << 16) | (rd << 11) | (sa << 6) | func
+}
 
-    /// Test the execution of an I-Type instruction. Checks register and
-    /// exception output vs. expected.
-    fn test_itype_instr(
-        name: &str,
-        op: u32,
-        rs: u32,
-        rt: u32,
-        rs_in: u64,
-        rt_in: u64,
-        immediate: u16,
-        expected_rt_out: u64,
-        expected_exception: Option<CpuException>,
-        reg_size: Option<RegSize>,
-    ) {
-        // If reg_size not given, test both.
-        if reg_size.is_none() {
-            test_itype_instr(
-                name,
-                op,
-                rs,
-                rt,
-                rs_in,
-                rt_in,
-                immediate,
-                expected_rt_out,
-                expected_exception,
-                Some(RegSize::Reg32),
-            );
-            test_itype_instr(
-                name,
-                op,
-                rs,
-                rt,
-                rs_in,
-                rt_in,
-                immediate,
-                expected_rt_out,
-                expected_exception,
-                Some(RegSize::Reg64),
-            );
-            return;
-        }
-
-        let reg_size = reg_size.unwrap();
-
-        let mut cpu = CpuVR4300::new();
-        let instr = itype_instr(op, rs, rt, immediate as u32);
-
-        cpu.reg_size = reg_size;
-        cpu.gpr[rs as usize] = rs_in;
-        cpu.gpr[rt as usize] = rt_in;
-        cpu.execute_instruction(instr);
-
-        let rt_out = cpu.gpr[rt as usize];
-
-        assert_eq!(
-            cpu.last_exception,
-            expected_exception,
-            itype_fail_str!(),
+/// Test the execution of an I-Type instruction. Checks register and
+/// exception output vs. expected.
+fn test_itype_instr(
+    name: &str,
+    op: u32,
+    rs: u32,
+    rt: u32,
+    rs_in: u64,
+    rt_in: u64,
+    immediate: u16,
+    expected_rt_out: u64,
+    expected_exception: Option<CpuException>,
+    reg_size: Option<RegSize>,
+) {
+    // If reg_size not given, test both.
+    if reg_size.is_none() {
+        test_itype_instr(
             name,
-            instr,
             op,
             rs,
             rt,
-            immediate,
-            reg_size,
-            rs,
             rs_in,
-            rt,
             rt_in,
+            immediate,
             expected_rt_out,
             expected_exception,
-            rt_out,
-            cpu.last_exception
+            Some(RegSize::Reg32),
         );
-
-        assert_eq!(
-            rt_out,
-            expected_rt_out,
-            itype_fail_str!(),
+        test_itype_instr(
             name,
-            instr,
             op,
             rs,
             rt,
-            immediate,
-            reg_size,
-            rs,
             rs_in,
-            rt,
             rt_in,
+            immediate,
             expected_rt_out,
             expected_exception,
-            rt_out,
-            cpu.last_exception
+            Some(RegSize::Reg64),
         );
+        return;
     }
 
-    /// Test the execution of an R-Type instruction. Checks register and
-    /// exception output vs. expected.
-    fn test_rtype_instr(
-        name: &str,
-        op: u32,
-        rs: u32,
-        rt: u32,
-        rd: u32,
-        sa: u32,
-        func: u32,
-        rs_in: u64,
-        rt_in: u64,
-        rd_in: u64,
-        expected_rd_out: u64,
-        expected_exception: Option<CpuException>,
-        reg_size: Option<RegSize>,
-    ) {
-        // If reg_size not given, test both.
-        if reg_size.is_none() {
-            test_rtype_instr(
-                name,
-                op,
-                rs,
-                rt,
-                rd,
-                sa,
-                func,
-                rs_in,
-                rt_in,
-                rd_in,
-                expected_rd_out,
-                expected_exception,
-                Some(RegSize::Reg32),
-            );
-            test_rtype_instr(
-                name,
-                op,
-                rs,
-                rt,
-                rd,
-                sa,
-                func,
-                rs_in,
-                rt_in,
-                rd_in,
-                expected_rd_out,
-                expected_exception,
-                Some(RegSize::Reg64),
-            );
-            return;
-        }
+    let reg_size = reg_size.unwrap();
 
-        let reg_size = reg_size.unwrap();
+    let mut cpu = CpuVR4300::new();
+    let instr = itype_instr(op, rs, rt, immediate as u32);
 
-        let mut cpu = CpuVR4300::new();
-        let instr = rtype_instr(op, rs, rt, rd, sa, func);
+    cpu.reg_size = reg_size;
+    cpu.gpr[rs as usize] = rs_in;
+    cpu.gpr[rt as usize] = rt_in;
+    cpu.execute_instruction(instr);
 
-        cpu.reg_size = reg_size;
-        cpu.gpr[rs as usize] = rs_in;
-        cpu.gpr[rt as usize] = rt_in;
-        cpu.gpr[rd as usize] = rd_in;
-        cpu.execute_instruction(instr);
+    let rt_out = cpu.gpr[rt as usize];
 
-        let rd_out = cpu.gpr[rd as usize];
+    assert_eq!(
+        cpu.last_exception,
+        expected_exception,
+        itype_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        immediate,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        expected_rt_out,
+        expected_exception,
+        rt_out,
+        cpu.last_exception
+    );
 
-        assert_eq!(
-            cpu.last_exception,
-            expected_exception,
-            rtype_fail_str!(),
+    assert_eq!(
+        rt_out,
+        expected_rt_out,
+        itype_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        immediate,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        expected_rt_out,
+        expected_exception,
+        rt_out,
+        cpu.last_exception
+    );
+}
+
+/// Test the execution of an R-Type instruction. Checks register and
+/// exception output vs. expected.
+fn test_rtype_instr(
+    name: &str,
+    op: u32,
+    rs: u32,
+    rt: u32,
+    rd: u32,
+    sa: u32,
+    func: u32,
+    rs_in: u64,
+    rt_in: u64,
+    rd_in: u64,
+    expected_rd_out: u64,
+    expected_exception: Option<CpuException>,
+    reg_size: Option<RegSize>,
+) {
+    // If reg_size not given, test both.
+    if reg_size.is_none() {
+        test_rtype_instr(
             name,
-            instr,
             op,
             rs,
             rt,
             rd,
             sa,
             func,
-            reg_size,
-            rs,
             rs_in,
-            rt,
             rt_in,
-            rd,
             rd_in,
             expected_rd_out,
             expected_exception,
-            rd_out,
-            cpu.last_exception
+            Some(RegSize::Reg32),
         );
-
-        assert_eq!(
-            rd_out,
-            expected_rd_out,
-            rtype_fail_str!(),
+        test_rtype_instr(
             name,
-            instr,
             op,
             rs,
             rt,
             rd,
             sa,
             func,
-            reg_size,
-            rs,
             rs_in,
-            rt,
             rt_in,
-            rd,
             rd_in,
             expected_rd_out,
             expected_exception,
-            rd_out,
-            cpu.last_exception
+            Some(RegSize::Reg64),
         );
+        return;
     }
 
-    /// Test the execution of a division or multiplication instruction.
-    fn test_divmul_instr(
-        name: &str,
-        op: u32,
-        rs: u32,
-        rt: u32,
-        func: u32,
-        rs_in: u64,
-        rt_in: u64,
-        hi_in: u64,
-        lo_in: u64,
-        expected_hi_out: u64,
-        expected_lo_out: u64,
-        expected_exception: Option<CpuException>,
-        reg_size: RegSize,
-    ) {
-        let mut cpu = CpuVR4300::new();
-        let instr = rtype_instr(op, rs, rt, 0, 0, func);
+    let reg_size = reg_size.unwrap();
 
-        cpu.reg_size = reg_size;
-        cpu.gpr[rs as usize] = rs_in;
-        cpu.gpr[rt as usize] = rt_in;
-        cpu.mult_hi = hi_in;
-        cpu.mult_lo = hi_in;
-        cpu.execute_instruction(instr);
+    let mut cpu = CpuVR4300::new();
+    let instr = rtype_instr(op, rs, rt, rd, sa, func);
 
-        assert_eq!(
-            cpu.last_exception,
-            expected_exception,
-            divmul_fail_str!(),
-            name,
-            instr,
-            op,
-            rs,
-            rt,
-            func,
-            reg_size,
-            rs,
-            rs_in,
-            rt,
-            rt_in,
-            hi_in,
-            lo_in,
-            expected_hi_out,
-            expected_lo_out,
-            expected_exception,
-            cpu.mult_hi,
-            cpu.mult_lo,
-            cpu.last_exception
-        );
+    cpu.reg_size = reg_size;
+    cpu.gpr[rs as usize] = rs_in;
+    cpu.gpr[rt as usize] = rt_in;
+    cpu.gpr[rd as usize] = rd_in;
+    cpu.execute_instruction(instr);
 
-        assert_eq!(
-            cpu.mult_hi,
-            expected_hi_out,
-            divmul_fail_str!(),
-            name,
-            instr,
-            op,
-            rs,
-            rt,
-            func,
-            reg_size,
-            rs,
-            rs_in,
-            rt,
-            rt_in,
-            hi_in,
-            lo_in,
-            expected_hi_out,
-            expected_lo_out,
-            expected_exception,
-            cpu.mult_hi,
-            cpu.mult_lo,
-            cpu.last_exception
-        );
+    let rd_out = cpu.gpr[rd as usize];
 
-        assert_eq!(
-            cpu.mult_lo,
-            expected_lo_out,
-            divmul_fail_str!(),
-            name,
-            instr,
-            op,
-            rs,
-            rt,
-            func,
-            reg_size,
-            rs,
-            rs_in,
-            rt,
-            rt_in,
-            hi_in,
-            lo_in,
-            expected_hi_out,
-            expected_lo_out,
-            expected_exception,
-            cpu.mult_hi,
-            cpu.mult_lo,
-            cpu.last_exception
-        );
-    }
+    assert_eq!(
+        cpu.last_exception,
+        expected_exception,
+        rtype_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        rd,
+        sa,
+        func,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        rd,
+        rd_in,
+        expected_rd_out,
+        expected_exception,
+        rd_out,
+        cpu.last_exception
+    );
 
+    assert_eq!(
+        rd_out,
+        expected_rd_out,
+        rtype_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        rd,
+        sa,
+        func,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        rd,
+        rd_in,
+        expected_rd_out,
+        expected_exception,
+        rd_out,
+        cpu.last_exception
+    );
+}
+
+/// Test the execution of a division or multiplication instruction.
+fn test_divmul_instr(
+    name: &str,
+    op: u32,
+    rs: u32,
+    rt: u32,
+    func: u32,
+    rs_in: u64,
+    rt_in: u64,
+    hi_in: u64,
+    lo_in: u64,
+    expected_hi_out: u64,
+    expected_lo_out: u64,
+    expected_exception: Option<CpuException>,
+    reg_size: RegSize,
+) {
+    let mut cpu = CpuVR4300::new();
+    let instr = rtype_instr(op, rs, rt, 0, 0, func);
+
+    cpu.reg_size = reg_size;
+    cpu.gpr[rs as usize] = rs_in;
+    cpu.gpr[rt as usize] = rt_in;
+    cpu.mult_hi = hi_in;
+    cpu.mult_lo = hi_in;
+    cpu.execute_instruction(instr);
+
+    assert_eq!(
+        cpu.last_exception,
+        expected_exception,
+        divmul_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        func,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        hi_in,
+        lo_in,
+        expected_hi_out,
+        expected_lo_out,
+        expected_exception,
+        cpu.mult_hi,
+        cpu.mult_lo,
+        cpu.last_exception
+    );
+
+    assert_eq!(
+        cpu.mult_hi,
+        expected_hi_out,
+        divmul_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        func,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        hi_in,
+        lo_in,
+        expected_hi_out,
+        expected_lo_out,
+        expected_exception,
+        cpu.mult_hi,
+        cpu.mult_lo,
+        cpu.last_exception
+    );
+
+    assert_eq!(
+        cpu.mult_lo,
+        expected_lo_out,
+        divmul_fail_str!(),
+        name,
+        instr,
+        op,
+        rs,
+        rt,
+        func,
+        reg_size,
+        rs,
+        rs_in,
+        rt,
+        rt_in,
+        hi_in,
+        lo_in,
+        expected_hi_out,
+        expected_lo_out,
+        expected_exception,
+        cpu.mult_hi,
+        cpu.mult_lo,
+        cpu.last_exception
+    );
+}
+
+mod alu_instructions {
+    use crate::processors::vr4300::{CpuException, RegSize};
+    use super::{test_itype_instr, test_rtype_instr, test_divmul_instr};
+    
     /// Test the ADD instruction.
     ///
     /// # ADD:
@@ -2676,3 +2679,15 @@ mod instrtest {
         );
     }
 }
+
+mod load_store_instructions {}
+
+mod branch_instructions {}
+
+mod cop0_instructions {}
+
+mod cop1_instructions {}
+
+mod pipeline {}
+
+mod timing {}
