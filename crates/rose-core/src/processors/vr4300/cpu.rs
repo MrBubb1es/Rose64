@@ -272,8 +272,24 @@ impl CpuVR4300 {
                         }
                     }
                 }
-                24 => {} // MULT
-                25 => {} // MULTU
+                24 => {
+                    // MULT
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as i32;
+                    let rt = self.gpr[instr.rt as usize] as i32;
+                    let prod = rs as i64 * rt as i64; 
+                    self.mult_lo = (prod as i32) as u64;
+                    self.mult_hi = ((prod >> 32) as i32) as u64;
+                }
+                25 => {
+                    // MULTU
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as u32;
+                    let rt = self.gpr[instr.rt as usize] as u32;
+                    let prod = rs as i64 * rt as i64; 
+                    self.mult_lo = (prod as i32) as u64;
+                    self.mult_hi = ((prod >> 32) as i32) as u64;
+                }
                 26 => {
                     // DIV
                     // Assuming 32 and 64 bit versions work identically WRT sign extension for now
@@ -298,8 +314,34 @@ impl CpuVR4300 {
                     self.mult_lo = (q as i32) as u64;
                     self.mult_hi = (r as i32) as u64;
                 }
-                28 => {} // DMULT
-                29 => {} // DMULTU
+                28 => {
+                    // DMULT
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rs = (self.gpr[instr.rs as usize] as i64) as i128;
+                            let rt = (self.gpr[instr.rt as usize] as i64) as i128;
+                            let prod = rs * rt;
+                            self.mult_lo = prod as u64;
+                            self.mult_hi = (prod >> 64) as u64;
+                        }
+                    }
+                }
+                29 => {
+                    // DMULTU
+                    match self.reg_size {
+                        RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                        RegSize::Reg64 => {
+                            let instr = RTypeInstruction::from_raw(i);
+                            let rs = self.gpr[instr.rs as usize] as u128;
+                            let rt = self.gpr[instr.rt as usize] as u128;
+                            let prod = rs * rt;
+                            self.mult_lo = prod as u64;
+                            self.mult_hi = (prod >> 64) as u64;
+                        }
+                    }
+                }
                 30 => {
                     // DDIV
                     // Assuming 32 and 64 bit versions work identically WRT sign extension for now
