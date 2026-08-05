@@ -156,6 +156,7 @@ impl CpuVR4300 {
 
         match opcode {
             0 => match i & 0x3F {
+                // SPECIAL opcodes
                 0 => {
                     // SLL
                     let instr = RTypeInstruction::from_raw(i);
@@ -342,8 +343,20 @@ impl CpuVR4300 {
                     self.gpr[instr.rd as usize] =
                         !(self.gpr[instr.rt as usize] | self.gpr[instr.rs as usize]);
                 }
-                42 => {} // SLT
-                43 => {} // SLTU
+                42 => {
+                    // SLT
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    self.gpr[instr.rd as usize] = if rs < rt { 1u64 } else { 0u64 };
+                }
+                43 => {
+                    // SLTU
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    self.gpr[instr.rd as usize] = if rs < rt { 1u64 } else { 0u64 };
+                }
                 44 => {
                     // DADD
                     match self.reg_size {
@@ -529,8 +542,20 @@ impl CpuVR4300 {
 
                 self.gpr[instr.rt as usize] = sum as u64;
             }
-            10 => {} // SLTI
-            11 => {} // SLTIU
+            10 => {
+                // SLTI
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let imm = (instr.immediate as i16) as i64;
+                self.gpr[instr.rt as usize] = if rs < imm { 1u64 } else { 0u64 };
+            }
+            11 => {
+                // SLTIU
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize];
+                let imm = instr.immediate as u64;
+                self.gpr[instr.rt as usize] = if rs < imm { 1u64 } else { 0u64 };
+            }
             12 => {
                 // ANDI
                 let instr = ITypeInstruction::from_raw(i);
