@@ -2474,8 +2474,8 @@ mod alu_instructions {
         // Test 1:
         //   GPR[rs] = 599
         //   GPR[rt] = 144
-        //   Expected HI = 599 / 144 = 4
-        //   Expected LO = 599 % 144 = 23
+        //   Expected LO = 599 / 144 = 4
+        //   Expected HI = 599 % 144 = 23
         test_divmul_instr(
             "DIV - Happy Path 1",
             OP,
@@ -2486,8 +2486,8 @@ mod alu_instructions {
             144,
             hi_in,
             lo_in,
-            4,
             23,
+            4,
             None,
             RegSize::Reg32,
         );
@@ -2502,8 +2502,8 @@ mod alu_instructions {
             144,
             hi_in,
             lo_in,
-            4,
             23,
+            4,
             None,
             RegSize::Reg64,
         );
@@ -2511,8 +2511,8 @@ mod alu_instructions {
         // Test 2:
         //   GPR[rs] = 78255
         //   GPR[rt] = -94723
-        //   Expected HI = 78255 / -94723 = 0
-        //   Expected LO = 78255 % -94723 = 78255
+        //   Expected LO = 78255 / -94723 = 0
+        //   Expected HI = 78255 % -94723 = 78255
         test_divmul_instr(
             "DIV - Happy Path 2",
             OP,
@@ -2523,8 +2523,8 @@ mod alu_instructions {
             -94723i32 as u64,
             hi_in,
             lo_in,
-            0,
             78255,
+            0,
             None,
             RegSize::Reg32,
         );
@@ -2539,8 +2539,8 @@ mod alu_instructions {
             -94723i32 as u64,
             hi_in,
             lo_in,
-            0,
             78255,
+            0,
             None,
             RegSize::Reg64,
         );
@@ -2548,8 +2548,8 @@ mod alu_instructions {
         // Test 2:
         //   GPR[rs] = 1859307798
         //   GPR[rt] = -19
-        //   Expected HI = 1859307798 / -19 = -97858305
-        //   Expected LO = 1859307798 % -19 = 3
+        //   Expected LO = 1859307798 / -19 = -97858305
+        //   Expected HI = 1859307798 % -19 = 3
         test_divmul_instr(
             "DIV - Happy Path 2",
             OP,
@@ -2560,8 +2560,8 @@ mod alu_instructions {
             -19i32 as u64,
             hi_in,
             lo_in,
-            -97858305i32 as u64,
             3,
+            -97858305i32 as u64,
             None,
             RegSize::Reg32,
         );
@@ -2576,8 +2576,8 @@ mod alu_instructions {
             -19i32 as u64,
             hi_in,
             lo_in,
-            -97858305i32 as u64,
             3,
+            -97858305i32 as u64,
             None,
             RegSize::Reg64,
         );
@@ -2644,8 +2644,8 @@ mod alu_instructions {
         // Test 2:
         //   GPR[rs] = 0x00000000_80000000
         //   GPR[rt] = 0
-        //   Expected HI = 55
-        //   Expected LO = 0xFFFFFFFF_80000000
+        //   Expected LO = 0xFFFFFFFF_FFFFFFFF
+        //   Expected HI = 0xFFFFFFFF_80000000
         test_divmul_instr(
             "DIV - Unhappy Path 1",
             OP,
@@ -2656,8 +2656,8 @@ mod alu_instructions {
             0,
             hi_in,
             lo_in,
-            55,
-            -1i32 as u64,
+            0xFFFFFFFF_80000000,
+            0xFFFFFFFF_FFFFFFFF,
             None,
             RegSize::Reg32,
         );
@@ -2668,12 +2668,12 @@ mod alu_instructions {
             rs,
             rt,
             FUNC,
-            55,
+            0x00000000_80000000,
             0,
             hi_in,
             lo_in,
-            55,
-            -1i32 as u64,
+            0xFFFFFFFF_80000000,
+            0xFFFFFFFF_FFFFFFFF,
             None,
             RegSize::Reg64,
         );
