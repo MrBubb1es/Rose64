@@ -3033,7 +3033,7 @@ mod instrtest {
     fn test_sltu() {
         const OP: u32 = 0b000000;
         const SA: u32 = 0b00000;
-        const FUNC: u32 = 0b101010;
+        const FUNC: u32 = 0b101011;
 
         let rs: u32 = 1;
         let rt: u32 = 2;
@@ -3114,7 +3114,7 @@ mod instrtest {
     /// - None
     #[test]
     fn test_sltiu() {
-        const OP: u32 = 0b001010;
+        const OP: u32 = 0b001011;
 
         let rs: u32 = 1;
         let rt: u32 = 2;
