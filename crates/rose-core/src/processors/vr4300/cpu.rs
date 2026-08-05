@@ -7,7 +7,20 @@
 //! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
-use crate::processors::vr4300::CpuException::IntegerOverflow;
+use crate::{memory::bus::{Bus, MemoryAccess}, processors::vr4300::CpuException::IntegerOverflow};
+
+#[inline]
+pub const fn map_virtual_address(vaddr: u64) -> u32 {
+    let va = vaddr as u32;
+
+    match va {
+        0x00000000..=0x7FFFFFFF => 0, /* KUSEG */ // TODO: User Segment, TLB mapped
+        0x80000000..=0x9FFFFFFF => va - 0x80000000, /* KSEG0 */
+        0xA0000000..=0xBFFFFFFF => va - 0xA0000000, /* KSEG1 */
+        0xC0000000..=0xDFFFFFFF => 0, /* KSSEG */ // TODO: Kernel Supervisor segment, TLB mapped
+        0xE0000000..=0xFFFFFFFF => 0, /* KSEG3 */ // TODO: Kernel Segment 3, TLB mapped
+    }
+}
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
@@ -650,12 +663,16 @@ impl CpuVR4300 {
         self.gpr[Self::ZR] = 0;
     }
 
-    fn read(&mut self, _addr: u64) -> u32 {
-        todo!("Cpu reads");
+    fn read(&mut self, bus: &Bus, vaddr: u64) -> u32 {
+        let paddr = map_virtual_address(vaddr);
+
+        bus.read32(paddr)
     }
 
-    fn write(&mut self, _addr: u64, _val: u32) {
-        todo!("Cpu writes");
+    fn write(&mut self, bus: &mut Bus, vaddr: u64, value: u32) {
+        let paddr = map_virtual_address(vaddr);
+
+        bus.write32(paddr, value);
     }
 
     fn raise_exception(&mut self, e: CpuException) {
