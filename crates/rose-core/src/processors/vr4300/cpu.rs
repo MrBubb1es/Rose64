@@ -232,7 +232,7 @@ impl CpuVR4300 {
                     }
                 }
                 22 => {
-                    // DSLRV
+                    // DSRLV
                     match self.reg_size {
                         RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
                         RegSize::Reg64 => {
