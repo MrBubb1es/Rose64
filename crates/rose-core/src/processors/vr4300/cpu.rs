@@ -274,12 +274,56 @@ impl CpuVR4300 {
                 }
                 24 => {} // MULT
                 25 => {} // MULTU
-                26 => {} // DIV
-                27 => {} // DIVU
+                26 => {
+                    // DIV
+                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 {1} else {-1});
+                    let r = rs.checked_rem(rt).unwrap_or(rs);
+
+                    self.mult_lo = (q as i32) as u64;
+                    self.mult_hi = (r as i32) as u64;
+                }
+                27 => {
+                    // DIVU
+                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    let q = rs.checked_div(rt).unwrap_or(u64::MAX);
+                    let r = rs.checked_rem(rt).unwrap_or(rs);
+
+                    self.mult_lo = (q as i32) as u64;
+                    self.mult_hi = (r as i32) as u64;
+                }
                 28 => {} // DMULT
                 29 => {} // DMULTU
-                30 => {} // DDIV
-                31 => {} // DDIVU
+                30 => {
+                    // DDIV
+                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 {1} else {-1});
+                    let r = rs.checked_rem(rt).unwrap_or(rs);
+
+                    self.mult_lo = q as u64;
+                    self.mult_hi = r as u64;
+                }
+                31 => {
+                    // DDIVU
+                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    let q = rs.checked_div(rt).unwrap_or(u64::MAX);
+                    let r = rs.checked_rem(rt).unwrap_or(rs);
+
+                    self.mult_lo = q;
+                    self.mult_hi = r;
+                }
                 32 => {
                     // ADD
                     let instr = RTypeInstruction::from_raw(i);
