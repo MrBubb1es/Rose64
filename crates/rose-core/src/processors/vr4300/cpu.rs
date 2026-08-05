@@ -7,7 +7,7 @@
 //! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
-use crate::processors::vr4300::{CpuException::IntegerOverflow};
+use crate::processors::vr4300::CpuException::IntegerOverflow;
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
@@ -160,25 +160,15 @@ impl CpuVR4300 {
                     // SLL
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.gpr[instr.rt as usize];
-                    let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-                    let result = ((rt << instr.shift) as i32) as u64;
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result & mask;
+
+                    self.gpr[instr.rd as usize] = (((rt as u32) << instr.shift) as i32) as u64;
                 }
                 2 => {
                     // SRL
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.gpr[instr.rt as usize];
-                    let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-                    let result = ((rt >> instr.shift) as i32) as u64;
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result & mask;
+
+                    self.gpr[instr.rd as usize] = (((rt as u32) >> instr.shift) as i32) as u64;
                 }
                 3 => {
                     // SRA
@@ -188,43 +178,27 @@ impl CpuVR4300 {
                     //   GPR[rt] value, bits from the high 32-bits are shifted in instead.
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.gpr[instr.rt as usize];
-                    let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-                    let result = ((rt >> instr.shift) as i32) as u64; // Shift full 64-bit register, then do 32-bit sign extension
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result & mask;
+
+                    self.gpr[instr.rd as usize] = (((rt as i64) >> instr.shift) as i32) as u64;
                 }
                 4 => {
                     // SLLV
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.gpr[instr.rt as usize];
                     let shift = self.gpr[instr.rs as usize] & 0x1F;
-                    let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-                    let result = ((rt << shift) as i32) as u64;
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result & mask;
+
+                    self.gpr[instr.rd as usize] = (((rt as u32) << shift) as i32) as u64;
                 }
                 6 => {
                     // SRLV
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.gpr[instr.rt as usize];
                     let shift = self.gpr[instr.rs as usize] & 0x1F;
-                    let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-                    let result = ((rt >> shift) as i32) as u64;
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result & mask;
+
+                    self.gpr[instr.rd as usize] = (((rt as u32) >> shift) as i32) as u64;
                 }
                 7 => {
                     // SRAV
-                    //
                     //
                     // SRAV HARDWARE BUG (32-bit mode):
                     //   Instead of shifting in 1's or 0's based on the sign of the 32-bit
@@ -232,13 +206,8 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     let rt = self.gpr[instr.rt as usize];
                     let shift = self.gpr[instr.rs as usize] & 0x1F;
-                    let mask: u64 = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-                    let result = ((rt >> shift) as i32) as u64; // Shift full 64-bit register, then do 32-bit sign extension
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result & mask;
+
+                    self.gpr[instr.rd as usize] = (((rt as i64) >> shift) as i32) as u64;
                 }
                 8 => {}  // JR
                 9 => {}  // JALR
@@ -308,15 +277,7 @@ impl CpuVR4300 {
                     if overflow {
                         self.raise_exception(CpuException::IntegerOverflow);
                     } else {
-                        let mask = match self.reg_size {
-                            RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                            RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                        };
-
-                        let result = (sum as u64) & mask;
-
-                        self.gpr[instr.rd as usize] &= !mask;
-                        self.gpr[instr.rd as usize] |= result;
+                        self.gpr[instr.rd as usize] = sum as u64;
                     }
                 }
                 33 => {
@@ -327,15 +288,7 @@ impl CpuVR4300 {
                     let rt = self.gpr[instr.rt as usize] as i32;
                     let sum = rs.wrapping_add(rt);
 
-                    let mask = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-
-                    let result = (sum as u64) & mask;
-
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result;
+                    self.gpr[instr.rd as usize] = sum as u64;
                 }
                 34 => {
                     // SUB
@@ -348,15 +301,7 @@ impl CpuVR4300 {
                     if overflow {
                         self.raise_exception(CpuException::IntegerOverflow);
                     } else {
-                        let mask = match self.reg_size {
-                            RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                            RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                        };
-
-                        let result = (diff as u64) & mask;
-
-                        self.gpr[instr.rd as usize] &= !mask;
-                        self.gpr[instr.rd as usize] |= result;
+                        self.gpr[instr.rd as usize] = diff as u64;
                     }
                 }
                 35 => {
@@ -367,72 +312,35 @@ impl CpuVR4300 {
                     let rt = self.gpr[instr.rt as usize] as i32;
                     let diff = rs.wrapping_sub(rt);
 
-                    let mask = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-
-                    let result = (diff as u64) & mask;
-
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result;
+                    self.gpr[instr.rd as usize] = diff as u64;
                 }
                 36 => {
                     // AND
                     let instr = RTypeInstruction::from_raw(i);
 
-                    let mask = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-
-                    let result = (self.gpr[instr.rt as usize] & self.gpr[instr.rs as usize]) & mask;
-
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result;
+                    self.gpr[instr.rd as usize] =
+                        self.gpr[instr.rt as usize] & self.gpr[instr.rs as usize];
                 }
                 37 => {
                     // OR
                     let instr = RTypeInstruction::from_raw(i);
 
-                    let mask = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-
-                    let result = (self.gpr[instr.rt as usize] | self.gpr[instr.rs as usize]) & mask;
-
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result;
+                    self.gpr[instr.rd as usize] =
+                        self.gpr[instr.rt as usize] | self.gpr[instr.rs as usize];
                 }
                 38 => {
                     // XOR
                     let instr = RTypeInstruction::from_raw(i);
 
-                    let mask = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-
-                    let result = (self.gpr[instr.rt as usize] ^ self.gpr[instr.rs as usize]) & mask;
-
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result;
+                    self.gpr[instr.rd as usize] =
+                        self.gpr[instr.rt as usize] ^ self.gpr[instr.rs as usize];
                 }
                 39 => {
                     // NOR
                     let instr = RTypeInstruction::from_raw(i);
 
-                    let mask = match self.reg_size {
-                        RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                        RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                    };
-
-                    let result =
-                        (!(self.gpr[instr.rt as usize] | self.gpr[instr.rs as usize])) & mask;
-
-                    self.gpr[instr.rd as usize] &= !mask;
-                    self.gpr[instr.rd as usize] |= result;
+                    self.gpr[instr.rd as usize] =
+                        !(self.gpr[instr.rt as usize] | self.gpr[instr.rs as usize]);
                 }
                 42 => {} // SLT
                 43 => {} // SLTU
@@ -605,16 +513,10 @@ impl CpuVR4300 {
                 let immediate = (instr.immediate as i16) as i32;
                 let (sum, overflow) = rs.overflowing_add(immediate);
 
-                let mask = match self.reg_size {
-                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                };
-
                 if overflow {
                     self.raise_exception(IntegerOverflow);
                 } else {
-                    self.gpr[instr.rt as usize] &= !mask;
-                    self.gpr[instr.rt as usize] |= sum as u64 & mask;
+                    self.gpr[instr.rt as usize] = sum as u64;
                 }
             }
             9 => {
@@ -623,22 +525,9 @@ impl CpuVR4300 {
 
                 let rs = self.gpr[instr.rs as usize] as i32;
                 let immediate = (instr.immediate as i16) as i32;
-                let sum = rs.wrapping_add(immediate) as u64;
+                let sum = rs.wrapping_add(immediate);
 
-                let mask = match self.reg_size {
-                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                };
-
-                // let result = match self.reg_size {
-                //     RegSize::Reg32 => (sum as u32) as u64,
-                //     RegSize::Reg64 => (sum as i64) as u64,
-                // };
-
-                self.gpr[instr.rt as usize] &= !mask;
-                self.gpr[instr.rt as usize] |= sum & mask;
-
-                // self.regs[instr.rt as usize] = result;
+                self.gpr[instr.rt as usize] = sum as u64;
             }
             10 => {} // SLTI
             11 => {} // SLTIU
@@ -646,43 +535,19 @@ impl CpuVR4300 {
                 // ANDI
                 let instr = ITypeInstruction::from_raw(i);
 
-                let mask = match self.reg_size {
-                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                };
-
-                let result = (instr.immediate as u64 & self.gpr[instr.rs as usize]) & mask;
-
-                self.gpr[instr.rt as usize] &= !mask;
-                self.gpr[instr.rt as usize] |= result;
+                self.gpr[instr.rt as usize] = instr.immediate as u64 & self.gpr[instr.rs as usize];
             }
             13 => {
                 // ORI
                 let instr = ITypeInstruction::from_raw(i);
 
-                let mask = match self.reg_size {
-                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                };
-
-                let result = (instr.immediate as u64 | self.gpr[instr.rs as usize]) & mask;
-
-                self.gpr[instr.rt as usize] &= !mask;
-                self.gpr[instr.rt as usize] |= result;
+                self.gpr[instr.rt as usize] = instr.immediate as u64 | self.gpr[instr.rs as usize];
             }
             14 => {
                 // XORI
                 let instr = ITypeInstruction::from_raw(i);
 
-                let mask = match self.reg_size {
-                    RegSize::Reg32 => 0x00000000_FFFFFFFF,
-                    RegSize::Reg64 => 0xFFFFFFFF_FFFFFFFF,
-                };
-
-                let result = (instr.immediate as u64 ^ self.gpr[instr.rs as usize]) & mask;
-
-                self.gpr[instr.rt as usize] &= !mask;
-                self.gpr[instr.rt as usize] |= result;
+                self.gpr[instr.rt as usize] = instr.immediate as u64 ^ self.gpr[instr.rs as usize];
             }
             15 => {} // LUI
             16 => {} // COP0
@@ -756,6 +621,8 @@ impl CpuVR4300 {
             63 => {} // SD
             _ => panic!("Unrecogized opcode: {opcode}"),
         }
+
+        self.gpr[Self::ZR] = 0;
     }
 
     fn read(&mut self, _addr: u64) -> u32 {
