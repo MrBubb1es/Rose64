@@ -4,7 +4,7 @@
 //! Contains tests for all VR4300 instructions. We try to test happy paths and
 //! unhappy (exception-causing) paths, and any edge cases that may arise.
 //!
-//! Author(s): MrBubblezsz
+//! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
 mod instrtest {
@@ -101,11 +101,11 @@ mod instrtest {
         let instr = itype_instr(op, rs, rt, immediate as u32);
 
         cpu.reg_size = reg_size;
-        cpu.regs[rs as usize] = rs_in;
-        cpu.regs[rt as usize] = rt_in;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
         cpu.execute_instruction(instr);
 
-        let rt_out = cpu.regs[rt as usize];
+        let rt_out = cpu.gpr[rt as usize];
 
         assert_eq!(
             cpu.last_exception,
@@ -171,12 +171,12 @@ mod instrtest {
         let instr = rtype_instr(op, rs, rt, rd, sa, func);
 
         cpu.reg_size = reg_size;
-        cpu.regs[rs as usize] = rs_in;
-        cpu.regs[rt as usize] = rt_in;
-        cpu.regs[rd as usize] = rd_in;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.gpr[rd as usize] = rd_in;
         cpu.execute_instruction(instr);
 
-        let rd_out = cpu.regs[rd as usize];
+        let rd_out = cpu.gpr[rd as usize];
 
         assert_eq!(
             cpu.last_exception,
@@ -2844,5 +2844,336 @@ mod instrtest {
             None,
             RegSize::Reg64,
         );
+    }
+
+    /// Test the SLT instruction.
+    ///
+    /// # SLT:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - `GPR[rd] <- (GPR[rs] < GPR[rt] ? 1 : 0)` (signed comparison)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_slt() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b101010;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test32 = |rs_in: u64, rt_in: u64| {
+            let rs_cmp_32 = rs_in as i32;
+            let rt_cmp_32 = rt_in as i32;
+            let rd_out_32 = (rd_in & !MASK32) | if rs_cmp_32 < rt_cmp_32 { 1 } else { 0 };
+
+            test_rtype_instr(
+                "SLT",
+                OP,
+                rs,
+                rt,
+                rd,
+                SA,
+                FUNC,
+                rs_in,
+                rt_in,
+                rd_in,
+                rd_out_32,
+                None,
+                RegSize::Reg32,
+            );
+        };
+
+        let test64 = |rs_in: u64, rt_in: u64| {
+            let rs_cmp_64 = rs_in as i64;
+            let rt_cmp_64 = rt_in as i64;
+            let rd_out_64 = if rs_cmp_64 < rt_cmp_64 { 1 } else { 0 };
+
+            test_rtype_instr(
+                "SLT",
+                OP,
+                rs,
+                rt,
+                rd,
+                SA,
+                FUNC,
+                rs_in,
+                rt_in,
+                rd_in,
+                rd_out_64,
+                None,
+                RegSize::Reg64,
+            );
+        };
+
+        // Condition true
+        test32(
+            0x00000000_FFFFFFEE, // -18
+            0xFFFFFFFF_00000000, // 0
+        );
+        test64(
+            0xFFFFFFFF_FFFFFFEE, // -18
+            0x00000000_00000000, // 0
+        );
+
+        // Condition false
+        test32(
+            0xFFFFFFFF_00000000, // 0
+            0x00000000_FFFFFFEE, // -18
+        );
+        test64(
+            0x00000000_00000000, // 0
+            0xFFFFFFFF_FFFFFFEE, // -18
+        );
+
+        // Inputs equal (should produce 0)
+        test32(0xABCDEF01_23456789, 0xABCDEF01_23456789);
+        test64(0xABCDEF01_23456789, 0xABCDEF01_23456789);
+    }
+
+    /// Test the SLTI instruction.
+    ///
+    /// # SLTI:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - `GPR[rd] <- (GPR[rs] < sign_extend_u32::<16>(imm) ? 1 : 0)` (signed comparison)
+    /// - 64-bit:
+    ///   - `GPR[rd] <- (GPR[rs] < sign_extend_u64::<16>(imm) ? 1 : 0)` (signed comparison)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_slti() {
+        const OP: u32 = 0b001010;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test32 = |rs_in: u64, imm: u16| {
+            let rs_cmp_32: i32 = rs_in as i32;
+            let imm_cmp_32: i32 = sign_extend_u32::<16>(imm as u32) as i32;
+            let rt_out_32: u64 = (rt_in & !MASK32) | if rs_cmp_32 < imm_cmp_32 { 1 } else { 0 };
+
+            test_itype_instr(
+                "SLTI",
+                OP,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                imm,
+                rt_out_32,
+                None,
+                RegSize::Reg32,
+            );
+        };
+
+        let test64 = |rs_in: u64, imm: u16| {
+            let rs_cmp_64: i64 = rs_in as i64;
+            let imm_cmp_64: i64 = sign_extend_u64::<16>(imm as u64) as i64;
+            let rt_out_64: u64 = if rs_cmp_64 < imm_cmp_64 { 1 } else { 0 };
+
+            test_itype_instr(
+                "SLTI",
+                OP,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                imm,
+                rt_out_64,
+                None,
+                RegSize::Reg64,
+            );
+        };
+
+        // Condition true
+        test32(
+            0x00000000_FFFFFFEE, // GPR[rs] = -18
+            0x0000,              // imm = 0
+        );
+        test64(
+            0xFFFFFFFF_FFFFFFEE, // GPR[rs] = -18
+            0x0000,              // imm = 0
+        );
+
+        // Condition false
+        test32(
+            0x00000000_00000000, // GPR[rs] = 0
+            0xFFEE,              // imm = -18
+        );
+        test64(
+            0x00000000_00000000, // GPR[rs] = 0
+            0xFFEE,              // imm = -18
+        );
+
+        // Inputs equal (should produce 0)
+        test32(0x00000000_00007F8A, 0x7F8A);
+        test64(0xFFFFFFFF_FFFFFF8A, 0xFF8A);
+    }
+
+    /// Test the SLTU instruction.
+    ///
+    /// # SLTU:
+    /// ## Type:
+    /// - R-Type
+    /// ## Operation:
+    /// - 32-bit, 64-bit:
+    ///   - `GPR[rd] <- (GPR[rs] < GPR[rt] ? 1 : 0)` (unsigned comparison)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_sltu() {
+        const OP: u32 = 0b000000;
+        const SA: u32 = 0b00000;
+        const FUNC: u32 = 0b101010;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rd: u32 = 3;
+        let rd_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test32 = |rs_in: u64, rt_in: u64| {
+            let rs_cmp_32: u32 = rs_in as u32;
+            let rt_cmp_32: u32 = rt_in as u32;
+            let rd_out_32: u64 = (rd_in & !MASK32) | if rs_cmp_32 < rt_cmp_32 { 1 } else { 0 };
+
+            test_rtype_instr(
+                "SLTU",
+                OP,
+                rs,
+                rt,
+                rd,
+                SA,
+                FUNC,
+                rs_in,
+                rt_in,
+                rd_in,
+                rd_out_32,
+                None,
+                RegSize::Reg32,
+            );
+        };
+
+        let test64 = |rs_in: u64, rt_in: u64| {
+            let rs_cmp_64: u64 = rs_in;
+            let rt_cmp_64: u64 = rt_in;
+            let rd_out_64: u64 = if rs_cmp_64 < rt_cmp_64 { 1 } else { 0 };
+
+            test_rtype_instr(
+                "SLTU",
+                OP,
+                rs,
+                rt,
+                rd,
+                SA,
+                FUNC,
+                rs_in,
+                rt_in,
+                rd_in,
+                rd_out_64,
+                None,
+                RegSize::Reg64,
+            );
+        };
+
+        // Condition true
+        test32(
+            0xFFFFFFFF_FF000000, // GPR[rs] = 4,278,190,080
+            0x00000000_FFFF8000, // GPR[rt] = 4,294,934,528
+        );
+        test64(0x00000000_FF000000, 0xFFFFFFFF_FFFF8000);
+
+        // Condition false
+        test32(0x00000000_00005000, 0x00000000_00004FFF);
+        test64(0xFFFFFFFF_FFFFFFFF, 0x00000000_00000000);
+
+        // Inputs equal (should produce 0)
+        test32(0x99999999_23232323, 0x10101010_23232323);
+        test64(0x34343434_56789ABC, 0x34343434_56789ABC);
+    }
+
+    /// Test the SLTIU instruction.
+    ///
+    /// # SLTIU:
+    /// ## Type:
+    /// - I-Type
+    /// ## Operation:
+    /// - 32-bit:
+    ///   - `GPR[rd] <- (GPR[rs] < sign_extend_u32::<16>(imm) ? 1 : 0)` (unsigned comparison)
+    /// - 64-bit:
+    ///   - `GPR[rd] <- (GPR[rs] < sign_extend_u64::<16>(imm) ? 1 : 0)` (unsigned comparison)
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_sltiu() {
+        const OP: u32 = 0b001010;
+
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test32 = |rs_in: u64, imm: u16| {
+            let rs_cmp_32: u32 = rs_in as u32;
+            let imm_cmp_32: u32 = sign_extend_u32::<16>(imm as u32);
+            let rt_out_32: u64 = (rt_in & !MASK32) | if rs_cmp_32 < imm_cmp_32 { 1 } else { 0 };
+
+            test_itype_instr(
+                "SLTIU",
+                OP,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                imm,
+                rt_out_32,
+                None,
+                RegSize::Reg32,
+            );
+        };
+
+        let test64 = |rs_in: u64, imm: u16| {
+            let rs_cmp_64: u64 = rs_in;
+            let imm_cmp_64: u64 = sign_extend_u64::<16>(imm as u64);
+            let rt_out_64: u64 = if rs_cmp_64 < imm_cmp_64 { 1 } else { 0 };
+
+            test_itype_instr(
+                "SLTIU",
+                OP,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                imm,
+                rt_out_64,
+                None,
+                RegSize::Reg64,
+            );
+        };
+
+        // Condition true
+        test32(
+            0x00000000_FF000000, // GPR[rs] = 4,278,190,080
+            0x8000,              // imm = 32,768 -> 4,294,934,528
+        );
+        test64(0xFFFFFFFF_FF000000, 0x8000);
+
+        // Condition false
+        test32(0x00000000_00000000, 0xFFEE);
+        test64(
+            0x00000000_00000000, // GPR[rs] = 0
+            0x0001,              // imm = 1
+        );
+
+        // Inputs equal (should produce 0)
+        test32(0x00000000_FFFF8000, 0x8000);
+        test64(0xFFFFFFFF_FFFF8055, 0x8055);
     }
 }
