@@ -107,11 +107,11 @@ mod instrtest {
         let instr = itype_instr(op, rs, rt, immediate as u32);
 
         cpu.reg_size = reg_size;
-        cpu.regs[rs as usize] = rs_in;
-        cpu.regs[rt as usize] = rt_in;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
         cpu.execute_instruction(instr);
 
-        let rt_out = cpu.regs[rt as usize];
+        let rt_out = cpu.gpr[rt as usize];
 
         assert_eq!(
             cpu.last_exception,
@@ -177,12 +177,12 @@ mod instrtest {
         let instr = rtype_instr(op, rs, rt, rd, sa, func);
 
         cpu.reg_size = reg_size;
-        cpu.regs[rs as usize] = rs_in;
-        cpu.regs[rt as usize] = rt_in;
-        cpu.regs[rd as usize] = rd_in;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.gpr[rd as usize] = rd_in;
         cpu.execute_instruction(instr);
 
-        let rd_out = cpu.regs[rd as usize];
+        let rd_out = cpu.gpr[rd as usize];
 
         assert_eq!(
             cpu.last_exception,

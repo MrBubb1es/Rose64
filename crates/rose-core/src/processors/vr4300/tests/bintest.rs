@@ -5,7 +5,7 @@
 //! are NOT full N64 roms, but raw binary files containing machine code, so the
 //! CPU will be given some dummy RAM to work with and run in isolation.
 //!
-//! Authors: logan (lpreston618), MrBubblezsz
+//! Authors: logocrazymon, MrBubblezsz
 //!-----------------------------------------------------------------------------
 
 mod bintest {
@@ -116,7 +116,7 @@ mod bintest {
             bus.write8(mem_start + i, bin_test.initial_memory[i as usize]);
         }
 
-        cpu.regs[CpuVR4300::LR] = MAGIC_RETURN_ADDRESS;
+        cpu.gpr[CpuVR4300::LR] = MAGIC_RETURN_ADDRESS;
 
         let is_jr_instr = |instr: u32| (instr >> 26) == 0 && (instr & 0x3F) == 0b001000;
 
@@ -128,7 +128,7 @@ mod bintest {
             if is_jr_instr(instr) {
                 let rs = (instr >> 21) & 0x1F;
 
-                if cpu.regs[rs as usize] == MAGIC_RETURN_ADDRESS {
+                if cpu.gpr[rs as usize] == MAGIC_RETURN_ADDRESS {
                     break;
                 }
             }
