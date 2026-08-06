@@ -3067,7 +3067,7 @@ mod alu_instructions {
         // Test 2:
         //   GPR[rs] = 0x00000000_80000000
         //   GPR[rt] = 0
-        //   Expected LO = 0xFFFFFFFF_FFFFFFFF
+        //   Expected LO = 0x00000000_00000001
         //   Expected HI = 0xFFFFFFFF_80000000
         test_divmul_instr(
             "DIV - Unhappy Path 1",
@@ -3080,7 +3080,7 @@ mod alu_instructions {
             hi_in,
             lo_in,
             0xFFFFFFFF_80000000,
-            0xFFFFFFFF_FFFFFFFF,
+            0x00000000_00000001,
             None,
             RegSize::Reg32,
         );
@@ -3096,7 +3096,7 @@ mod alu_instructions {
             hi_in,
             lo_in,
             0xFFFFFFFF_80000000,
-            0xFFFFFFFF_FFFFFFFF,
+            0x00000000_00000001,
             None,
             RegSize::Reg64,
         );
