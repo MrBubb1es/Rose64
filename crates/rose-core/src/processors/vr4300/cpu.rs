@@ -653,7 +653,12 @@ impl CpuVR4300 {
 
                 self.gpr[instr.rt as usize] = instr.immediate as u64 ^ self.gpr[instr.rs as usize];
             }
-            15 => {} // LUI
+            15 => {
+                // LUI
+                let instr = ITypeInstruction::from_raw(i);
+                let val = (((instr.immediate as u32) << 16) as i32) as u64;
+                self.gpr[instr.rt as usize] = val;
+            }
             16 => {} // COP0
             17 => {} // COP1
             18 => {} // COP2
