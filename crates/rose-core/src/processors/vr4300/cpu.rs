@@ -640,18 +640,118 @@ impl CpuVR4300 {
                             self.exec_state = ExecutionState::Delay(addr as u64);
                         }
                     }
-                    2 => {}  // BLTZL
-                    3 => {}  // BGEZL
+                    2 => {
+                        // BLTZL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.imm as i16) as i64) << 2;
+                        if rs < 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.pc = addr as u64;
+                            return None;
+                        }
+                    }
+                    3 => {
+                        // BGEZL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.imm as i16) as i64) << 2;
+                        if rs >= 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.pc = addr as u64;
+                            return None;
+                        }
+                    }
                     8 => {}  // TGEI
                     9 => {}  // TGEIU
                     10 => {} // TLTI
                     11 => {} // TLTIU
                     12 => {} // TEQI
                     14 => {} // TNEI
-                    16 => {} // BLTZAL
-                    17 => {} // BGEZAL
-                    18 => {} // BLTZALL
-                    19 => {} // BGEZALL
+                    16 => {
+                        // BLTZAL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.imm as i16) as i64) << 2;
+                        // Set link register to predicted addr
+                        self.gpr[31] = self.pc + 4;
+
+                        if rs < 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.exec_state = ExecutionState::Delay(addr as u64);
+                        }
+                    }
+                    17 => {
+                        // BGEZAL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.imm as i16) as i64) << 2;
+                        // Set link register to predicted addr
+                        self.gpr[31] = self.pc + 4;
+
+                        if rs >= 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.exec_state = ExecutionState::Delay(addr as u64);
+                        }
+                    }
+                    18 => {
+                        // BLTZALL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.imm as i16) as i64) << 2;
+                        // Set link register to predicted instruction addr
+                        let branch_addr = (self.pc as i64 + offset) as u64;
+                        self.gpr[31] = branch_addr;
+
+                        if rs < 0 {
+                            self.pc = branch_addr;
+                            return None;
+                        }
+                    }
+                    19 => {
+                        // BGEZALL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.imm as i16) as i64) << 2;
+                        // Set link register to predicted instruction addr
+                        let branch_addr = (self.pc as i64 + offset) as u64;
+                        self.gpr[31] = branch_addr;
+
+                        if rs >= 0 {
+                            self.pc = branch_addr;
+                            return None;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -795,14 +895,61 @@ impl CpuVR4300 {
                 let rs = self.gpr[instr.rs as usize] as i64;
                 let rt = self.gpr[instr.rt as usize] as i64;
                 let offset = ((instr.imm as i16) as i64) << 2;
-                if rs < 0 {
+                if rs == rt {
                     let addr = self.pc as i64 + offset;
-                    self.exec_state = ExecutionState::Delay(addr as u64);
+                    self.pc = addr as u64;
+                    return None;
                 }
             }
-            21 => {} // BNEL
-            22 => {} // BLEZL
-            23 => {} // BGTZL
+            21 => {
+                // BNEL
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                    // Branch in a delay slot, do nothing.
+                    return None;
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let rt = self.gpr[instr.rt as usize] as i64;
+                let offset = ((instr.imm as i16) as i64) << 2;
+                if rs != rt {
+                    let addr = self.pc as i64 + offset;
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
+            22 => {
+                // BLEZL
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                    // Branch in a delay slot, do nothing.
+                    return None;
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let offset = ((instr.imm as i16) as i64) << 2;
+                if rs <= 0 {
+                    let addr = self.pc as i64 + offset;
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
+            23 => {
+                // BGTZL
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                    // Branch in a delay slot, do nothing.
+                    return None;
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let offset = ((instr.imm as i16) as i64) << 2;
+                if rs <= 0 {
+                    let addr = self.pc as i64 + offset;
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
             24 => {
                 // DADDI
                 if self.reg_size == RegSize::Reg32 {
