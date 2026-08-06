@@ -1,5 +1,5 @@
 //! -----------------------------------------------------------------------
-//! memory.rs: An implementation of fast memory
+//! fastmem.rs: An implementation of fast memory
 //!
 //! The FastMemory struct contains portions of the N64's internal memory that
 //! are statically mapped to parts of virtal address space. This includes

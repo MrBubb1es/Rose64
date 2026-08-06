@@ -10,7 +10,7 @@
 //! Author(s): MrBubblezsz
 //! -----------------------------------------------------------------------
 
-use crate::memory::{Rom, memory::FastMemory};
+use crate::memory::{Rom, fastmem::FastMemory};
 
 /// `MemoryAccess` contains methods for reading and writing various sizes of
 /// data to and from underlying data structs. We may also leverage this for

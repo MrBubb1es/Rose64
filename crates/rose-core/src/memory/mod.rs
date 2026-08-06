@@ -1,5 +1,5 @@
 pub mod bus;
-mod memory;
+mod fastmem;
 mod rom;
 
 pub use rom::Rom;

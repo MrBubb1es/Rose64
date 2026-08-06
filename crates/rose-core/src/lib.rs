@@ -22,6 +22,12 @@ pub struct Rose64Core {
 
 impl Rose64Core {
     pub fn new() -> Rose64Core {
+        Rose64Core::default()
+    }
+}
+
+impl Default for Rose64Core {
+    fn default() -> Self {
         Rose64Core {
             cpu: CpuVR4300::new(),
             bus: Bus::new(vec![0u8; 0x1000]).ok().unwrap(), // temp blank rom data

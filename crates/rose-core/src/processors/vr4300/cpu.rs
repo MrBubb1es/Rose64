@@ -15,6 +15,7 @@ use crate::{
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
+#[derive(Default)]
 pub struct CpuVR4300 {
     pub gpr: [u64; 32],
     pub fpr: [f64; 32],
@@ -122,8 +123,9 @@ impl RTypeInstruction {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub enum RegSize {
+    #[default]
     Reg32,
     Reg64,
 }
@@ -143,18 +145,7 @@ impl CpuVR4300 {
     pub const LR: usize = 31;
 
     pub fn new() -> CpuVR4300 {
-        CpuVR4300 {
-            gpr: [0; 32],
-            fpr: [0.0; 32],
-            pc: 0,
-            mult_hi: 0,
-            mult_lo: 0,
-            fp_control: 0.0,
-            fp_revision: 0.0,
-            llbit: false,
-            reg_size: RegSize::Reg32,
-            last_exception: None,
-        }
+        CpuVR4300::default()
     }
 
     pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) {
@@ -291,8 +282,8 @@ impl CpuVR4300 {
                     let q = rs.checked_div(rt).unwrap_or(if rs < 0 { 1 } else { -1 });
                     let r = rs.checked_rem(rt).unwrap_or(rs);
 
-                    self.mult_lo = (q as i32) as u64;
-                    self.mult_hi = (r as i32) as u64;
+                    self.mult_lo = q as u64;
+                    self.mult_hi = r as u64;
                 }
                 27 => {
                     // DIVU
@@ -1080,32 +1071,32 @@ mod tests {
         bus.memory.rdram.0[7] = 0x81;
 
         // Happy paths, should throw no exceptions
-        assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 0), Ok(0x18));
+        assert_eq!(cpu.read8(&mut bus, RDRAM_BASE), Ok(0x18));
         assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 1), Ok(0x19));
         assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 2), Ok(0x20));
         assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 3), Ok(0x21));
 
-        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE + 0), Ok(0x1819));
+        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE), Ok(0x1819));
         assert_eq!(cpu.read16(&mut bus, RDRAM_BASE + 2), Ok(0x2021));
 
-        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE + 0), Ok(0x18192021));
+        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE), Ok(0x18192021));
 
         assert_eq!(
-            cpu.read64(&mut bus, RDRAM_BASE + 0),
+            cpu.read64(&mut bus, RDRAM_BASE),
             Ok(0x18192021_78798081)
         );
 
-        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 0, 0x00), None);
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE, 0x00), None);
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 1, 0x00), None);
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 2, 0x00), None);
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 3, 0x00), None);
 
-        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 0, 0x00), None);
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE, 0x00), None);
         assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 2, 0x00), None);
 
-        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE + 0, 0x00), None);
+        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE, 0x00), None);
 
-        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 0, 0x00), None);
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE, 0x00), None);
 
         // Unhappy paths, should throw AddressErrorLoad/Store
         assert_eq!(

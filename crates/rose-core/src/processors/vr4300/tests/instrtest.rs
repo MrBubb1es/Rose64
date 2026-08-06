@@ -170,6 +170,7 @@ mod util {
 
     /// Test the execution of an I-Type instruction. Checks register and
     /// exception output vs. expected.
+    #[allow(clippy::too_many_arguments)]
     pub fn test_itype_instr(
         name: &str,
         op: u32,
@@ -269,6 +270,7 @@ mod util {
 
     /// Test the execution of an R-Type instruction. Checks register and
     /// exception output vs. expected.
+    #[allow(clippy::too_many_arguments)]
     pub fn test_rtype_instr(
         name: &str,
         op: u32,
@@ -385,6 +387,7 @@ mod util {
     }
 
     /// Test the execution of a division or multiplication instruction.
+    #[allow(clippy::too_many_arguments)]
     pub fn test_divmul_instr(
         name: &str,
         op: u32,
@@ -497,6 +500,7 @@ mod util {
     /// address at which `mem_bytes` is written into RDRAM before execution
     /// (equal to the effective address for simple loads; the aligned
     /// word/dword address for LWL/LWR/LDL/LDR).
+    #[allow(clippy::too_many_arguments)]
     pub fn test_load_instr(
         name: &str,
         op: u32,
@@ -607,6 +611,7 @@ mod util {
 
     /// Like `test_load_instr`, but also checks `cpu.llbit` (for LL/LLD).
     /// `llbit` is reset to `false` before execution.
+    #[allow(clippy::too_many_arguments)]
     pub fn test_ll_instr(
         name: &str,
         op: u32,
@@ -725,6 +730,7 @@ mod util {
     /// Test the execution of a store instruction. Pre-fills the `expected_mem`-
     /// sized window at `mem_addr` with `STORE_SENTINEL`, executes, and compares
     /// the resulting bytes and exception against expectations.
+    #[allow(clippy::too_many_arguments)]
     pub fn test_store_instr(
         name: &str,
         op: u32,
@@ -1566,7 +1572,7 @@ mod alu_instructions {
         // No overflow
         let rs_in: u64 = 5002;
         let rt_in: u64 = 963;
-        let rd_out: u64 = (rs_in - rt_in) as u64;
+        let rd_out: u64 = rs_in - rt_in;
 
         test_rtype_instr(
             "SUB", OP, rs, rt, rd, SA, FUNC, rs_in, rt_in, rd_in, rd_out, None, None,
