@@ -8,7 +8,9 @@
 //! -----------------------------------------------------------------------
 
 use crate::{
-    common::hint::rose_unlikely, memory::bus::{Bus, MemoryAccess}, processors::vr4300::cp0::Cp0,
+    common::hint::rose_unlikely,
+    memory::bus::{Bus, MemoryAccess},
+    processors::vr4300::cp0::Cp0,
 };
 
 /// Representation of the N64's VR4300 processor.
@@ -37,11 +39,11 @@ pub struct CpuVR4300 {
 /// | opcode (6 bits) | rs(5) | rt(5) | immediate (16) |
 /// +-----------------+-------+-------+----------------+
 /// </pre>
-struct ITypeInstruction {
-    opcode: u8,
-    rs: u8,
-    rt: u8,
-    immediate: u16,
+pub(crate) struct ITypeInstruction {
+    pub opcode: u8,
+    pub rs: u8,
+    pub rt: u8,
+    pub imm: u16,
 }
 
 impl ITypeInstruction {
@@ -53,12 +55,12 @@ impl ITypeInstruction {
     /// # Returns:
     /// - `ITypeInstruction` struct with separated fields
     #[inline]
-    fn from_raw(i: u32) -> ITypeInstruction {
+    pub fn from_raw(i: u32) -> ITypeInstruction {
         ITypeInstruction {
             opcode: (i >> 26) as u8,
             rs: ((i >> 21) & 0x1F) as u8,
             rt: ((i >> 16) & 0x1F) as u8,
-            immediate: i as u16,
+            imm: i as u16,
         }
     }
 }
@@ -69,9 +71,9 @@ impl ITypeInstruction {
 /// | opcode (6 bits) |          target (26 bits)          |
 /// +-----------------+------------------------------------+
 /// </pre>
-struct JTypeInstruction {
-    opcode: u8,
-    target: u32,
+pub(crate) struct JTypeInstruction {
+    pub opcode: u8,
+    pub target: u32,
 }
 
 impl JTypeInstruction {
@@ -83,7 +85,7 @@ impl JTypeInstruction {
     /// # Returns:
     /// - `JTypeInstruction` struct with separated fields
     #[inline]
-    fn from_raw(i: u32) -> JTypeInstruction {
+    pub fn from_raw(i: u32) -> JTypeInstruction {
         JTypeInstruction {
             opcode: (i >> 26) as u8,
             target: i & 0x3FFFFFF,
@@ -97,13 +99,13 @@ impl JTypeInstruction {
 /// | opcode (6 bits) | rs(5) | rt(5) | rd(5) | sa(5) | funct(6) |
 /// +-----------------+-------+-------+-------+-------+----------+
 /// </pre>
-struct RTypeInstruction {
-    opcode: u8,
-    rs: u8,
-    rt: u8,
-    rd: u8,
-    shift: u8,
-    funct: u8,
+pub(crate) struct RTypeInstruction {
+    pub opcode: u8,
+    pub rs: u8,
+    pub rt: u8,
+    pub rd: u8,
+    pub shift: u8,
+    pub funct: u8,
 }
 
 impl RTypeInstruction {
@@ -115,7 +117,7 @@ impl RTypeInstruction {
     /// # Returns:
     /// - `RTypeInstruction` struct with separated fields
     #[inline]
-    fn from_raw(i: u32) -> RTypeInstruction {
+    pub fn from_raw(i: u32) -> RTypeInstruction {
         RTypeInstruction {
             opcode: (i >> 26) as u8,
             rs: ((i >> 21) & 0x1F) as u8,
@@ -140,7 +142,9 @@ pub enum CpuException {
     ReservedInstruction,
     AddressErrorLoad,
     AddressErrorStore,
-    
+    TlbMiss,
+    TlbModification,
+    TlbInvalid,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
@@ -163,12 +167,12 @@ impl CpuVR4300 {
 
     pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) -> Option<CpuException> {
         match self.exec_state {
-            ExecutionState::Normal => {}, // Fall through to normal execution
+            ExecutionState::Normal => {} // Fall through to normal execution
             ExecutionState::Delay(addr) => {
                 // If we're in a delay slot, jump on the NEXT instruction, but still
                 // execute the next opcode normally.
                 self.exec_state = ExecutionState::Jump(addr)
-            },
+            }
             ExecutionState::Jump(addr) => {
                 // Execute a previously set-up branch/jump instruction.
                 self.pc = addr;
@@ -403,7 +407,7 @@ impl CpuVR4300 {
                     if overflow {
                         return Some(CpuException::IntegerOverflow);
                     }
-                    
+
                     self.gpr[instr.rd as usize] = diff as u64;
                 }
                 35 => {
@@ -608,46 +612,46 @@ impl CpuVR4300 {
                 match rt {
                     0 => {
                         // BLTZ
-                        if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                             // Branch in a delay slot, do nothing.
                             return None;
                         }
 
                         let instr = ITypeInstruction::from_raw(i);
                         let rs = self.gpr[instr.rs as usize] as i64;
-                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        let offset = ((instr.imm as i16) as i64) << 2;
                         if rs < 0 {
                             let addr = self.pc as i64 + offset;
                             self.exec_state = ExecutionState::Delay(addr as u64);
-                        } 
-                    },
+                        }
+                    }
                     1 => {
                         // BGEZ
-                        if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                             // Branch in a delay slot, do nothing.
                             return None;
                         }
 
                         let instr = ITypeInstruction::from_raw(i);
                         let rs = self.gpr[instr.rs as usize] as i64;
-                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        let offset = ((instr.imm as i16) as i64) << 2;
                         if rs >= 0 {
                             let addr = self.pc as i64 + offset;
                             self.exec_state = ExecutionState::Delay(addr as u64);
-                        } 
-                    },
-                    2 => {}, // BLTZL
-                    3 => {}, // BGEZL
-                    8 => {}, // TGEI
-                    9 => {}, // TGEIU
-                    10 => {}, // TLTI
-                    11 => {}, // TLTIU
-                    12 => {}, // TEQI
-                    14 => {}, // TNEI
-                    16 => {}, // BLTZAL
-                    17 => {}, // BGEZAL
-                    18 => {}, // BLTZALL
-                    19 => {}, // BGEZALL
+                        }
+                    }
+                    2 => {}  // BLTZL
+                    3 => {}  // BGEZL
+                    8 => {}  // TGEI
+                    9 => {}  // TGEIU
+                    10 => {} // TLTI
+                    11 => {} // TLTIU
+                    12 => {} // TEQI
+                    14 => {} // TNEI
+                    16 => {} // BLTZAL
+                    17 => {} // BGEZAL
+                    18 => {} // BLTZALL
+                    19 => {} // BGEZALL
                     _ => {}
                 }
             }
@@ -655,7 +659,7 @@ impl CpuVR4300 {
             3 => {} // JAL
             4 => {
                 // BEQ
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
@@ -663,7 +667,7 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize];
                 let rt = self.gpr[instr.rt as usize];
-                let offset = ((instr.immediate as i16) as i64) << 2;
+                let offset = ((instr.imm as i16) as i64) << 2;
                 if rs == rt {
                     let addr = self.pc as i64 + offset;
                     self.exec_state = ExecutionState::Delay(addr as u64);
@@ -671,7 +675,7 @@ impl CpuVR4300 {
             }
             5 => {
                 // BNE
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
@@ -679,7 +683,7 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize];
                 let rt = self.gpr[instr.rt as usize];
-                let offset = ((instr.immediate as i16) as i64) << 2;
+                let offset = ((instr.imm as i16) as i64) << 2;
                 if rs != rt {
                     let addr = self.pc as i64 + offset;
                     self.exec_state = ExecutionState::Delay(addr as u64);
@@ -687,14 +691,14 @@ impl CpuVR4300 {
             }
             6 => {
                 // BLEZ
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize] as i64;
-                let offset = ((instr.immediate as i16) as i64) << 2;
+                let offset = ((instr.imm as i16) as i64) << 2;
                 if rs <= 0 {
                     let addr = self.pc as i64 + offset;
                     self.exec_state = ExecutionState::Delay(addr as u64);
@@ -702,14 +706,14 @@ impl CpuVR4300 {
             }
             7 => {
                 // BGTZ
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize] as i64;
-                let offset = ((instr.immediate as i16) as i64) << 2;
+                let offset = ((instr.imm as i16) as i64) << 2;
                 if rs > 0 {
                     let addr = self.pc as i64 + offset;
                     self.exec_state = ExecutionState::Delay(addr as u64);
@@ -720,7 +724,7 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
 
                 let rs = self.gpr[instr.rs as usize] as i32;
-                let immediate = (instr.immediate as i16) as i32;
+                let immediate = (instr.imm as i16) as i32;
                 let (sum, overflow) = rs.overflowing_add(immediate);
 
                 if overflow {
@@ -734,7 +738,7 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
 
                 let rs = self.gpr[instr.rs as usize] as i32;
-                let immediate = (instr.immediate as i16) as i32;
+                let immediate = (instr.imm as i16) as i32;
                 let sum = rs.wrapping_add(immediate);
 
                 self.gpr[instr.rt as usize] = sum as u64;
@@ -743,38 +747,38 @@ impl CpuVR4300 {
                 // SLTI
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize] as i64;
-                let imm = (instr.immediate as i16) as i64;
+                let imm = (instr.imm as i16) as i64;
                 self.gpr[instr.rt as usize] = if rs < imm { 1u64 } else { 0u64 };
             }
             11 => {
                 // SLTIU
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize];
-                let imm = instr.immediate as u64;
+                let imm = instr.imm as u64;
                 self.gpr[instr.rt as usize] = if rs < imm { 1u64 } else { 0u64 };
             }
             12 => {
                 // ANDI
                 let instr = ITypeInstruction::from_raw(i);
 
-                self.gpr[instr.rt as usize] = instr.immediate as u64 & self.gpr[instr.rs as usize];
+                self.gpr[instr.rt as usize] = instr.imm as u64 & self.gpr[instr.rs as usize];
             }
             13 => {
                 // ORI
                 let instr = ITypeInstruction::from_raw(i);
 
-                self.gpr[instr.rt as usize] = instr.immediate as u64 | self.gpr[instr.rs as usize];
+                self.gpr[instr.rt as usize] = instr.imm as u64 | self.gpr[instr.rs as usize];
             }
             14 => {
                 // XORI
                 let instr = ITypeInstruction::from_raw(i);
 
-                self.gpr[instr.rt as usize] = instr.immediate as u64 ^ self.gpr[instr.rs as usize];
+                self.gpr[instr.rt as usize] = instr.imm as u64 ^ self.gpr[instr.rs as usize];
             }
             15 => {
                 // LUI
                 let instr = ITypeInstruction::from_raw(i);
-                let val = (((instr.immediate as u32) << 16) as i32) as u64;
+                let val = (((instr.imm as u32) << 16) as i32) as u64;
                 self.gpr[instr.rt as usize] = val;
             }
             16 => {} // COP0
@@ -782,20 +786,20 @@ impl CpuVR4300 {
             18 => {} // COP2
             20 => {
                 // BEQL
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
-                
+
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize] as i64;
                 let rt = self.gpr[instr.rt as usize] as i64;
-                let offset = ((instr.immediate as i16) as i64) << 2;
+                let offset = ((instr.imm as i16) as i64) << 2;
                 if rs < 0 {
                     let addr = self.pc as i64 + offset;
                     self.exec_state = ExecutionState::Delay(addr as u64);
-                } 
-            } // BEQL
+                }
+            }
             21 => {} // BNEL
             22 => {} // BLEZL
             23 => {} // BGTZL
@@ -807,9 +811,9 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize] as i64;
-                let immediate = (instr.immediate as i16) as i64;
+                let immediate = (instr.imm as i16) as i64;
                 let (result, overflow) = rs.overflowing_add(immediate);
-                
+
                 if overflow {
                     return Some(CpuException::IntegerOverflow);
                 }
@@ -824,7 +828,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize];
-                let immediate = (instr.immediate as i16) as u64;
+                let immediate = (instr.imm as i16) as u64;
                 let result = rs.wrapping_add(immediate);
                 self.gpr[instr.rt as usize] = result;
             }
@@ -835,7 +839,7 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let vaddr_aligned = vaddr & !7;
                 let byte_offset = vaddr & 7;
@@ -860,7 +864,8 @@ impl CpuVR4300 {
                 let temp = 8 * (byte_offset + 1);
                 let mask = 0xFFFFFFFF_FFFFFFFFu64.checked_shr(temp as u32).unwrap_or(0);
                 let shift = 64 - temp;
-                self.gpr[instr.rt as usize] = (self.gpr[instr.rt as usize] & mask) | (value << shift);
+                self.gpr[instr.rt as usize] =
+                    (self.gpr[instr.rt as usize] & mask) | (value << shift);
             }
             27 => {
                 // LDR
@@ -869,7 +874,7 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let vaddr_aligned = vaddr & !7;
                 let byte_offset = vaddr & 7;
@@ -892,14 +897,17 @@ impl CpuVR4300 {
 
                 // Same result as match but no branching
                 let temp = 8 * byte_offset;
-                let mask = 0xFFFFFFFF_FFFFFFFFu64.checked_shr(64 - temp as u32).unwrap_or(0);
+                let mask = 0xFFFFFFFF_FFFFFFFFu64
+                    .checked_shr(64 - temp as u32)
+                    .unwrap_or(0);
                 let shift = temp;
-                self.gpr[instr.rt as usize] = (self.gpr[instr.rt as usize] & mask) | (value >> shift);
+                self.gpr[instr.rt as usize] =
+                    (self.gpr[instr.rt as usize] & mask) | (value >> shift);
             }
             32 => {
                 // LB
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
 
                 match self.read8(bus, vaddr) {
@@ -910,7 +918,7 @@ impl CpuVR4300 {
             33 => {
                 // LH
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 match self.read16(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = (data as i16) as u64,
@@ -920,7 +928,7 @@ impl CpuVR4300 {
             34 => {
                 // LWL
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let vaddr_aligned = vaddr & !3;
                 let byte_offset = vaddr & 3;
@@ -948,7 +956,7 @@ impl CpuVR4300 {
             35 => {
                 // LW
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 match self.read32(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = (data as i32) as u64,
@@ -958,7 +966,7 @@ impl CpuVR4300 {
             36 => {
                 // LBU
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 match self.read8(bus, vaddr) {
                     Ok(value) => self.gpr[instr.rt as usize] = value as u64,
@@ -968,7 +976,7 @@ impl CpuVR4300 {
             37 => {
                 // LHU
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 match self.read16(bus, vaddr) {
                     Ok(value) => self.gpr[instr.rt as usize] = value as u64,
@@ -978,7 +986,7 @@ impl CpuVR4300 {
             38 => {
                 // LWR
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let vaddr_aligned = vaddr & !3;
                 let byte_offset = vaddr & 3;
@@ -1006,7 +1014,7 @@ impl CpuVR4300 {
             39 => {
                 // LWU
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 match self.read32(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = data as u64,
@@ -1016,7 +1024,7 @@ impl CpuVR4300 {
             40 => {
                 // SB
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let data = self.gpr[instr.rt as usize] as u8;
                 self.write8(bus, vaddr, data)?;
@@ -1024,7 +1032,7 @@ impl CpuVR4300 {
             41 => {
                 // SH
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let data = self.gpr[instr.rt as usize] as u16;
                 self.write16(bus, vaddr, data)?;
@@ -1032,7 +1040,7 @@ impl CpuVR4300 {
             42 => {
                 // SWL
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let value = self.gpr[instr.rt as usize] as u32;
                 let byte_offset = vaddr & 3;
@@ -1057,7 +1065,7 @@ impl CpuVR4300 {
             43 => {
                 // SW
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let data = self.gpr[instr.rt as usize] as u32;
                 self.write32(bus, vaddr, data)?;
@@ -1069,7 +1077,7 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let value = self.gpr[instr.rt as usize];
                 let byte_offset = vaddr & 7;
@@ -1077,12 +1085,12 @@ impl CpuVR4300 {
                 match byte_offset {
                     0 => {
                         self.write64(bus, vaddr, value)?;
-                    },
+                    }
                     1 => {
                         self.write8(bus, vaddr, (value >> 56) as u8)?;
                         self.write16(bus, vaddr + 1, (value >> 40) as u16)?;
                         self.write32(bus, vaddr + 3, (value >> 8) as u32)?;
-                    },
+                    }
                     2 => {
                         self.write16(bus, vaddr, (value >> 48) as u16)?;
                         self.write32(bus, vaddr + 2, (value >> 16) as u32)?;
@@ -1114,7 +1122,7 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let value = self.gpr[instr.rt as usize];
                 let byte_offset = vaddr & 7;
@@ -1122,12 +1130,12 @@ impl CpuVR4300 {
                 match byte_offset {
                     0 => {
                         self.write64(bus, vaddr, value)?;
-                    },
+                    }
                     1 => {
                         self.write8(bus, vaddr, (value >> 48) as u8)?;
                         self.write16(bus, vaddr + 1, (value >> 32) as u16)?;
                         self.write32(bus, vaddr + 3, value as u32)?;
-                    },
+                    }
                     2 => {
                         self.write16(bus, vaddr, (value >> 40) as u16)?;
                         self.write32(bus, vaddr + 2, value as u32)?;
@@ -1155,7 +1163,7 @@ impl CpuVR4300 {
             46 => {
                 // SWR
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let value = self.gpr[instr.rt as usize] as u32;
                 let byte_offset = vaddr & 3;
@@ -1181,7 +1189,7 @@ impl CpuVR4300 {
             48 => {
                 // LL
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let paddr = match self.translate_vaddr(vaddr as u32) {
                     Ok(pa) => pa,
@@ -1204,7 +1212,7 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let paddr = match self.translate_vaddr(vaddr as u32) {
                     Ok(pa) => pa,
@@ -1227,7 +1235,7 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 match self.read64(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = data,
@@ -1238,7 +1246,7 @@ impl CpuVR4300 {
                 // SC
                 let instr = ITypeInstruction::from_raw(i);
                 let value = self.gpr[instr.rt as usize] as u32;
-                let vaddr = self.gpr[instr.rs as usize] + (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + (instr.imm as i16) as u64;
                 self.gpr[instr.rt as usize] = 0;
 
                 if self.llbit {
@@ -1257,7 +1265,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let value = self.gpr[instr.rt as usize];
-                let vaddr = self.gpr[instr.rs as usize] + (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + (instr.imm as i16) as u64;
                 self.gpr[instr.rt as usize] = 0;
 
                 if self.llbit {
@@ -1265,13 +1273,13 @@ impl CpuVR4300 {
                 }
 
                 self.gpr[instr.rt as usize] = 1;
-            } // SCD
+            }
             61 => {} // SDC1
             62 => {} // SDC2
             63 => {
                 // SD
                 let instr = ITypeInstruction::from_raw(i);
-                let offset = (instr.immediate as i16) as u64;
+                let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let value = self.gpr[instr.rt as usize];
                 self.write64(bus, vaddr, value)?;
@@ -1553,10 +1561,7 @@ mod tests {
 
         assert_eq!(cpu.read32(&mut bus, RDRAM_BASE), Ok(0x18192021));
 
-        assert_eq!(
-            cpu.read64(&mut bus, RDRAM_BASE),
-            Ok(0x18192021_78798081)
-        );
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE), Ok(0x18192021_78798081));
 
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE, 0x00), None);
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 1, 0x00), None);

@@ -13,6 +13,7 @@
 use crate::common::consts::MB;
 use crate::memory::bus::{Bus, MemoryAccess};
 use crate::processors::vr4300::CpuVR4300;
+use crate::processors::vr4300::disassembler::Disassembler;
 
 const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-roms/vr4300-thar0/");
 const TEST_ROM_SIZE: usize = 8 * MB;
@@ -103,7 +104,7 @@ fn read_bin_test(data: &[u8]) -> BinTest {
 }
 
 fn run_bin_test(test_file: &str) {
-    const MAX_INSTRUCTIONS: usize = 1_000_000;
+    const MAX_INSTRUCTIONS: usize = 100;
     const MAGIC_RETURN_ADDRESS: u64 = 0x00000000_DEAD0123;
 
     let test_path = format!("{TEST_DIR}{test_file}");
@@ -120,6 +121,11 @@ fn run_bin_test(test_file: &str) {
     let mem_start = bin_test.header.memory_load_addr;
     let mem_size = bin_test.header.memory_chunk_size;
 
+    let pcode_start = code_start;
+    let pcode_end = code_start + code_size;
+
+    println!("Writing {code_size} bytes of code to MEM[{pcode_start:08X}..{pcode_end:08X}]");
+
     for i in 0..code_size {
         bus.write8(
             translate_vaddr_simple(code_start + i),
@@ -135,12 +141,16 @@ fn run_bin_test(test_file: &str) {
     }
 
     cpu.gpr[CpuVR4300::LR] = MAGIC_RETURN_ADDRESS;
+    cpu.pc = (code_start as i32) as u64;
 
     let is_jr_instr = |instr: u32| (instr >> 26) == 0 && (instr & 0x3F) == 0b001000;
 
     let mut instruction_count: usize = 0;
     for _ in 0..MAX_INSTRUCTIONS {
         let instr = bus.read32(translate_vaddr_simple(cpu.pc as u32));
+        
+        println!("0x{:08X}: {}", cpu.pc as u32, Disassembler::instruction_string(cpu.pc, instr));
+        
         cpu.pc += 4;
 
         if is_jr_instr(instr) {
@@ -180,6 +190,7 @@ fn run_bin_test(test_file: &str) {
 #[test]
 fn test_bin_addu_data() {
     run_bin_test("addu_data.bin");
+    // first Instr: 400B4800, Op: 010000
 }
 
 #[test]
