@@ -270,7 +270,7 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize] as i32;
                     let rt = self.gpr[instr.rt as usize] as i32;
-                    let prod = rs as i64 * rt as i64; 
+                    let prod = rs as i64 * rt as i64;
                     self.mult_lo = (prod as i32) as u64;
                     self.mult_hi = ((prod >> 32) as i32) as u64;
                 }
@@ -279,17 +279,16 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize] as u32;
                     let rt = self.gpr[instr.rt as usize] as u32;
-                    let prod = rs as i64 * rt as i64; 
+                    let prod = rs as i64 * rt as i64;
                     self.mult_lo = (prod as i32) as u64;
                     self.mult_hi = ((prod >> 32) as i32) as u64;
                 }
                 26 => {
                     // DIV
-                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let rt = self.gpr[instr.rt as usize] as i64;
-                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 {1} else {-1});
+                    let rs = self.gpr[instr.rs as usize] as i32;
+                    let rt = self.gpr[instr.rt as usize] as i32;
+                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 { 1 } else { -1 });
                     let r = rs.checked_rem(rt).unwrap_or(rs);
 
                     self.mult_lo = (q as i32) as u64;
@@ -297,11 +296,10 @@ impl CpuVR4300 {
                 }
                 27 => {
                     // DIVU
-                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    let rt = self.gpr[instr.rt as usize];
-                    let q = rs.checked_div(rt).unwrap_or(u64::MAX);
+                    let rs = self.gpr[instr.rs as usize] as u32;
+                    let rt = self.gpr[instr.rt as usize] as u32;
+                    let q = rs.checked_div(rt).unwrap_or(u32::MAX);
                     let r = rs.checked_rem(rt).unwrap_or(rs);
 
                     self.mult_lo = (q as i32) as u64;
@@ -337,11 +335,10 @@ impl CpuVR4300 {
                 }
                 30 => {
                     // DDIV
-                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize] as i64;
                     let rt = self.gpr[instr.rt as usize] as i64;
-                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 {1} else {-1});
+                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 { 1 } else { -1 });
                     let r = rs.checked_rem(rt).unwrap_or(rs);
 
                     self.mult_lo = q as u64;
@@ -349,7 +346,6 @@ impl CpuVR4300 {
                 }
                 31 => {
                     // DDIVU
-                    // Assuming 32 and 64 bit versions work identically WRT sign extension for now
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize];
                     let rt = self.gpr[instr.rt as usize];
