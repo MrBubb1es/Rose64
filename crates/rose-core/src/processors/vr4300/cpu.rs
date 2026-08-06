@@ -1043,7 +1043,7 @@ impl CpuVR4300 {
                     Ok(pa) => pa,
                     Err(e) => return Some(e),
                 };
-                let value = match self.read32(bus, vaddr) {
+                let value = match self.pread32(bus, paddr) {
                     Ok(v) => v,
                     Err(e) => return Some(e),
                 };
@@ -1066,7 +1066,7 @@ impl CpuVR4300 {
                     Ok(pa) => pa,
                     Err(e) => return Some(e),
                 };
-                let value = match self.read64(bus, vaddr) {
+                let value = match self.pread64(bus, paddr) {
                     Ok(v) => v,
                     Err(e) => return Some(e),
                 };
@@ -1222,6 +1222,29 @@ impl CpuVR4300 {
         }
 
         let paddr = self.translate_vaddr(vaddr)?;
+
+        let hi = bus.read32(paddr) as u64;
+        let lo = bus.read32(paddr + 4) as u64;
+
+        Ok(hi << 32 | lo)
+    }
+
+    /// Read a 64-bit value from the given physical address
+    fn pread32(&mut self, bus: &mut Bus, paddr: u32) -> Result<u64, CpuException> {
+        // Alignment check
+        if rose_unlikely(paddr & 7 != 0) {
+            return Err(CpuException::AddressErrorLoad);
+        }
+
+        Ok(bus.read32(paddr) as u64)
+    }
+
+    /// Read a 64-bit value from the given physical address
+    fn pread64(&mut self, bus: &mut Bus, paddr: u32) -> Result<u64, CpuException> {
+        // Alignment check
+        if rose_unlikely(paddr & 7 != 0) {
+            return Err(CpuException::AddressErrorLoad);
+        }
 
         let hi = bus.read32(paddr) as u64;
         let lo = bus.read32(paddr + 4) as u64;
