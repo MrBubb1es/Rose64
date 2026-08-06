@@ -7,11 +7,104 @@
 //! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
-use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
+#![cfg(test)]
 
-macro_rules! itype_fail_str {
-    () => {
-        r#"
+mod util {
+    use crate::{
+        memory::bus::Bus,
+        processors::vr4300::{CpuException, CpuVR4300, RegSize},
+    };
+
+    /// KSEG0 base address of RDRAM (matches `test_unaligned_address_exceptions`).
+    pub const RDRAM_BASE: u64 = 0xFFFFFFFF_80000000;
+
+    /// Byte written into a store's target window before execution, so we can
+    /// detect both "did the write happen" and, for SWL/SWR/SDL/SDR, exercise
+    /// the byte-merge against a known "existing memory" pattern.
+    pub const STORE_SENTINEL: u8 = 0xEE;
+
+    macro_rules! itype_fail_str {
+        () => {
+            r#"
+    {}:
+        Instruction:
+            Full = 0x{:08X}
+            Op = 0b{:06b}
+            rs = 0b{:05b}
+            rt = 0b{:05b}
+            imm = 0x{:04X}
+        Input:
+            Mode = {:?}
+            rs = {}, GPR[rs] = {:016X}
+            rt = {}, GPR[rt] = {:016X}
+        Expected:
+            GPR[rt] = {:016X}
+            Exception = {:?}
+        Got:
+            GPR[rt] = {:016X}
+            Exception = {:?}"#
+        };
+    }
+
+    macro_rules! rtype_fail_str {
+        () => {
+            r#"
+    {}:
+        Instruction:
+            Full = 0x{:08X}
+            Op = 0b{:06b}
+            rs = 0b{:05b}
+            rt = 0b{:05b}
+            rd = 0b{:05b}
+            sa = 0b{:05b}
+            func = 0b{:06b}
+        Input:
+            Mode = {:?}
+            rs = {}, GPR[rs] = {:016X}
+            rt = {}, GPR[rt] = {:016X}
+            rd = {}, GPR[rd] = {:016X}
+        Expected:
+            GPR[rd] = {:016X}
+            Exception = {:?}
+        Got:
+            GPR[rd] = {:016X}
+            Exception = {:?}"#
+        };
+    }
+
+    macro_rules! divmul_fail_str {
+        () => {
+            r#"
+    {}:
+        Instruction:
+            Full = 0x{:08X}
+            Op = 0b{:06b}
+            rs = 0b{:05b}
+            rt = 0b{:05b}
+            rd = 0b00000
+            sa = 0b00000
+            func = 0b{:06b}
+        Input:
+            Mode = {:?}
+            rs = {}, GPR[rs] = {:016X}
+            rt = {}, GPR[rt] = {:016X}
+            rd = 0, GPR[rd] = 0000000000000000
+            HI = {:016X}
+            LO = {:016X}
+        Expected:
+            HI = {:016X}
+            LO = {:016X}
+            Exception = {:?}
+        Got:
+            HI = {:016X}
+            LO = {:016X}
+            Exception = {:?}"#
+        };
+    }
+
+    macro_rules! load_fail_str {
+        () => {
+            r#"
 {}:
     Instruction:
         Full = 0x{:08X}
@@ -21,403 +114,730 @@ macro_rules! itype_fail_str {
         imm = 0x{:04X}
     Input:
         Mode = {:?}
-        rs = {}, GPR[rs] = {:016X}
-        rt = {}, GPR[rt] = {:016X}
+        rs = {}, GPR[rs] (base) = 0x{:016X}
+        Effective Address = 0x{:016X}
+        rt = {}, GPR[rt] (before) = 0x{:016X}
     Expected:
-        GPR[rt] = {:016X}
+        GPR[rt] = 0x{:016X}
         Exception = {:?}
     Got:
-        GPR[rt] = {:016X}
+        GPR[rt] = 0x{:016X}
         Exception = {:?}"#
-    };
-}
+        };
+    }
 
-macro_rules! rtype_fail_str {
-    () => {
-        r#"
+    macro_rules! store_fail_str {
+        () => {
+            r#"
 {}:
     Instruction:
         Full = 0x{:08X}
         Op = 0b{:06b}
         rs = 0b{:05b}
         rt = 0b{:05b}
-        rd = 0b{:05b}
-        sa = 0b{:05b}
-        func = 0b{:06b}
+        imm = 0x{:04X}
     Input:
         Mode = {:?}
-        rs = {}, GPR[rs] = {:016X}
-        rt = {}, GPR[rt] = {:016X}
-        rd = {}, GPR[rd] = {:016X}
+        rs = {}, GPR[rs] (base) = 0x{:016X}
+        Effective Address = 0x{:016X}
+        rt = {}, GPR[rt] (store value) = 0x{:016X}
     Expected:
-        GPR[rd] = {:016X}
+        Memory[addr..] = {:02X?}
         Exception = {:?}
     Got:
-        GPR[rd] = {:016X}
+        Memory[addr..] = {:02X?}
         Exception = {:?}"#
-    };
-}
-
-macro_rules! divmul_fail_str {
-    () => {
-        r#"
-{}:
-    Instruction:
-        Full = 0x{:08X}
-        Op = 0b{:06b}
-        rs = 0b{:05b}
-        rt = 0b{:05b}
-        rd = 0b00000
-        sa = 0b00000
-        func = 0b{:06b}
-    Input:
-        Mode = {:?}
-        rs = {}, GPR[rs] = {:016X}
-        rt = {}, GPR[rt] = {:016X}
-        rd = 0, GPR[rd] = 0000000000000000
-        HI = {:016X}
-        LO = {:016X}
-    Expected:
-        HI = {:016X}
-        LO = {:016X}
-        Exception = {:?}
-    Got:
-        HI = {:016X}
-        LO = {:016X}
-        Exception = {:?}"#
-    };
-}
-
-/// Builds an I-type isntruction from its components. See ITypeInstruciton
-/// struct for the layout diagram.
-fn itype_instr(op: u32, rs: u32, rt: u32, immediate: u32) -> u32 {
-    (op << 26) | (rs << 21) | (rt << 16) | immediate
-}
-
-/// Builds an R-type isntruction from its components. See RTypeInstruciton
-/// struct for the layout diagram.
-fn rtype_instr(op: u32, rs: u32, rt: u32, rd: u32, sa: u32, func: u32) -> u32 {
-    (op << 26) | (rs << 21) | (rt << 16) | (rd << 11) | (sa << 6) | func
-}
-
-/// Test the execution of an I-Type instruction. Checks register and
-/// exception output vs. expected.
-fn test_itype_instr(
-    name: &str,
-    op: u32,
-    rs: u32,
-    rt: u32,
-    rs_in: u64,
-    rt_in: u64,
-    immediate: u16,
-    expected_rt_out: u64,
-    expected_exception: Option<CpuException>,
-    reg_size: Option<RegSize>,
-) {
-    // If reg_size not given, test both.
-    if reg_size.is_none() {
-        test_itype_instr(
-            name,
-            op,
-            rs,
-            rt,
-            rs_in,
-            rt_in,
-            immediate,
-            expected_rt_out,
-            expected_exception,
-            Some(RegSize::Reg32),
-        );
-        test_itype_instr(
-            name,
-            op,
-            rs,
-            rt,
-            rs_in,
-            rt_in,
-            immediate,
-            expected_rt_out,
-            expected_exception,
-            Some(RegSize::Reg64),
-        );
-        return;
+        };
     }
 
-    let reg_size = reg_size.unwrap();
+    /// Builds an I-type isntruction from its components. See ITypeInstruciton
+    /// struct for the layout diagram.
+    pub fn itype_instr(op: u32, rs: u32, rt: u32, immediate: u32) -> u32 {
+        (op << 26) | (rs << 21) | (rt << 16) | immediate
+    }
 
-    let mut cpu = CpuVR4300::new();
-    let instr = itype_instr(op, rs, rt, immediate as u32);
+    /// Builds an R-type isntruction from its components. See RTypeInstruciton
+    /// struct for the layout diagram.
+    pub fn rtype_instr(op: u32, rs: u32, rt: u32, rd: u32, sa: u32, func: u32) -> u32 {
+        (op << 26) | (rs << 21) | (rt << 16) | (rd << 11) | (sa << 6) | func
+    }
 
-    cpu.reg_size = reg_size;
-    cpu.gpr[rs as usize] = rs_in;
-    cpu.gpr[rt as usize] = rt_in;
-    cpu.execute_instruction(instr);
+    pub fn test_rom() -> Vec<u8> {
+        use crate::common::consts::MB;
 
-    let rt_out = cpu.gpr[rt as usize];
+        vec![0; 8 * MB]
+    }
 
-    assert_eq!(
-        cpu.last_exception,
-        expected_exception,
-        itype_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        immediate,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        expected_rt_out,
-        expected_exception,
-        rt_out,
-        cpu.last_exception
-    );
+    /// Test the execution of an I-Type instruction. Checks register and
+    /// exception output vs. expected.
+    pub fn test_itype_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        rs_in: u64,
+        rt_in: u64,
+        immediate: u16,
+        expected_rt_out: u64,
+        expected_exception: Option<CpuException>,
+        reg_size: Option<RegSize>,
+    ) {
+        // If reg_size not given, test both.
+        if reg_size.is_none() {
+            test_itype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                immediate,
+                expected_rt_out,
+                expected_exception,
+                Some(RegSize::Reg32),
+            );
+            test_itype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rs_in,
+                rt_in,
+                immediate,
+                expected_rt_out,
+                expected_exception,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
 
-    assert_eq!(
-        rt_out,
-        expected_rt_out,
-        itype_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        immediate,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        expected_rt_out,
-        expected_exception,
-        rt_out,
-        cpu.last_exception
-    );
-}
+        let reg_size = reg_size.unwrap();
 
-/// Test the execution of an R-Type instruction. Checks register and
-/// exception output vs. expected.
-fn test_rtype_instr(
-    name: &str,
-    op: u32,
-    rs: u32,
-    rt: u32,
-    rd: u32,
-    sa: u32,
-    func: u32,
-    rs_in: u64,
-    rt_in: u64,
-    rd_in: u64,
-    expected_rd_out: u64,
-    expected_exception: Option<CpuException>,
-    reg_size: Option<RegSize>,
-) {
-    // If reg_size not given, test both.
-    if reg_size.is_none() {
-        test_rtype_instr(
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+        let instr = itype_instr(op, rs, rt, immediate as u32);
+
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.execute_instruction(&mut bus, instr);
+
+        let rt_out = cpu.gpr[rt as usize];
+
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            itype_fail_str!(),
             name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            expected_rt_out,
+            expected_exception,
+            rt_out,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            rt_out,
+            expected_rt_out,
+            itype_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            expected_rt_out,
+            expected_exception,
+            rt_out,
+            cpu.last_exception
+        );
+    }
+
+    /// Test the execution of an R-Type instruction. Checks register and
+    /// exception output vs. expected.
+    pub fn test_rtype_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        rd: u32,
+        sa: u32,
+        func: u32,
+        rs_in: u64,
+        rt_in: u64,
+        rd_in: u64,
+        expected_rd_out: u64,
+        expected_exception: Option<CpuException>,
+        reg_size: Option<RegSize>,
+    ) {
+        // If reg_size not given, test both.
+        if reg_size.is_none() {
+            test_rtype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rd,
+                sa,
+                func,
+                rs_in,
+                rt_in,
+                rd_in,
+                expected_rd_out,
+                expected_exception,
+                Some(RegSize::Reg32),
+            );
+            test_rtype_instr(
+                name,
+                op,
+                rs,
+                rt,
+                rd,
+                sa,
+                func,
+                rs_in,
+                rt_in,
+                rd_in,
+                expected_rd_out,
+                expected_exception,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
+
+        let reg_size = reg_size.unwrap();
+
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+        let instr = rtype_instr(op, rs, rt, rd, sa, func);
+
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.gpr[rd as usize] = rd_in;
+        cpu.execute_instruction(&mut bus, instr);
+
+        let rd_out = cpu.gpr[rd as usize];
+
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            rtype_fail_str!(),
+            name,
+            instr,
             op,
             rs,
             rt,
             rd,
             sa,
             func,
+            reg_size,
+            rs,
             rs_in,
+            rt,
             rt_in,
+            rd,
             rd_in,
             expected_rd_out,
             expected_exception,
-            Some(RegSize::Reg32),
+            rd_out,
+            cpu.last_exception
         );
-        test_rtype_instr(
+
+        assert_eq!(
+            rd_out,
+            expected_rd_out,
+            rtype_fail_str!(),
             name,
+            instr,
             op,
             rs,
             rt,
             rd,
             sa,
             func,
+            reg_size,
+            rs,
             rs_in,
+            rt,
             rt_in,
+            rd,
             rd_in,
             expected_rd_out,
             expected_exception,
-            Some(RegSize::Reg64),
+            rd_out,
+            cpu.last_exception
         );
-        return;
     }
 
-    let reg_size = reg_size.unwrap();
+    /// Test the execution of a division or multiplication instruction.
+    pub fn test_divmul_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        func: u32,
+        rs_in: u64,
+        rt_in: u64,
+        hi_in: u64,
+        lo_in: u64,
+        expected_hi_out: u64,
+        expected_lo_out: u64,
+        expected_exception: Option<CpuException>,
+        reg_size: RegSize,
+    ) {
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+        let instr = rtype_instr(op, rs, rt, 0, 0, func);
 
-    let mut cpu = CpuVR4300::new();
-    let instr = rtype_instr(op, rs, rt, rd, sa, func);
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = rs_in;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.mult_hi = hi_in;
+        cpu.mult_lo = hi_in;
+        cpu.execute_instruction(&mut bus, instr);
 
-    cpu.reg_size = reg_size;
-    cpu.gpr[rs as usize] = rs_in;
-    cpu.gpr[rt as usize] = rt_in;
-    cpu.gpr[rd as usize] = rd_in;
-    cpu.execute_instruction(instr);
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            divmul_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            func,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            hi_in,
+            lo_in,
+            expected_hi_out,
+            expected_lo_out,
+            expected_exception,
+            cpu.mult_hi,
+            cpu.mult_lo,
+            cpu.last_exception
+        );
 
-    let rd_out = cpu.gpr[rd as usize];
+        assert_eq!(
+            cpu.mult_hi,
+            expected_hi_out,
+            divmul_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            func,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            hi_in,
+            lo_in,
+            expected_hi_out,
+            expected_lo_out,
+            expected_exception,
+            cpu.mult_hi,
+            cpu.mult_lo,
+            cpu.last_exception
+        );
 
-    assert_eq!(
-        cpu.last_exception,
-        expected_exception,
-        rtype_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        rd,
-        sa,
-        func,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        rd,
-        rd_in,
-        expected_rd_out,
-        expected_exception,
-        rd_out,
-        cpu.last_exception
-    );
+        assert_eq!(
+            cpu.mult_lo,
+            expected_lo_out,
+            divmul_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            func,
+            reg_size,
+            rs,
+            rs_in,
+            rt,
+            rt_in,
+            hi_in,
+            lo_in,
+            expected_hi_out,
+            expected_lo_out,
+            expected_exception,
+            cpu.mult_hi,
+            cpu.mult_lo,
+            cpu.last_exception
+        );
+    }
 
-    assert_eq!(
-        rd_out,
-        expected_rd_out,
-        rtype_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        rd,
-        sa,
-        func,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        rd,
-        rd_in,
-        expected_rd_out,
-        expected_exception,
-        rd_out,
-        cpu.last_exception
-    );
-}
+    /// Computes `base + sign_extend(imm)`, matching how the CPU forms the
+    /// effective address for all load/store instructions.
+    pub fn eff_addr(base: u64, immediate: u16) -> u64 {
+        base.wrapping_add(((immediate as i16) as i64) as u64)
+    }
 
-/// Test the execution of a division or multiplication instruction.
-fn test_divmul_instr(
-    name: &str,
-    op: u32,
-    rs: u32,
-    rt: u32,
-    func: u32,
-    rs_in: u64,
-    rt_in: u64,
-    hi_in: u64,
-    lo_in: u64,
-    expected_hi_out: u64,
-    expected_lo_out: u64,
-    expected_exception: Option<CpuException>,
-    reg_size: RegSize,
-) {
-    let mut cpu = CpuVR4300::new();
-    let instr = rtype_instr(op, rs, rt, 0, 0, func);
+    /// Test the execution of a load instruction. `mem_addr` is the absolute
+    /// address at which `mem_bytes` is written into RDRAM before execution
+    /// (equal to the effective address for simple loads; the aligned
+    /// word/dword address for LWL/LWR/LDL/LDR).
+    #[allow(clippy::too_many_arguments)]
+    pub fn test_load_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        base: u64,
+        immediate: u16,
+        rt_in: u64,
+        mem_addr: u64,
+        mem_bytes: &[u8],
+        expected_rt_out: u64,
+        expected_exception: Option<CpuException>,
+        reg_size: Option<RegSize>,
+    ) {
+        if reg_size.is_none() {
+            test_load_instr(
+                name,
+                op,
+                rs,
+                rt,
+                base,
+                immediate,
+                rt_in,
+                mem_addr,
+                mem_bytes,
+                expected_rt_out,
+                expected_exception,
+                Some(RegSize::Reg32),
+            );
+            test_load_instr(
+                name,
+                op,
+                rs,
+                rt,
+                base,
+                immediate,
+                rt_in,
+                mem_addr,
+                mem_bytes,
+                expected_rt_out,
+                expected_exception,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
 
-    cpu.reg_size = reg_size;
-    cpu.gpr[rs as usize] = rs_in;
-    cpu.gpr[rt as usize] = rt_in;
-    cpu.mult_hi = hi_in;
-    cpu.mult_lo = hi_in;
-    cpu.execute_instruction(instr);
+        let reg_size = reg_size.unwrap();
 
-    assert_eq!(
-        cpu.last_exception,
-        expected_exception,
-        divmul_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        func,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        hi_in,
-        lo_in,
-        expected_hi_out,
-        expected_lo_out,
-        expected_exception,
-        cpu.mult_hi,
-        cpu.mult_lo,
-        cpu.last_exception
-    );
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+        let instr = itype_instr(op, rs, rt, immediate as u32);
+        let addr = eff_addr(base, immediate);
+        let window = (mem_addr - RDRAM_BASE) as usize;
 
-    assert_eq!(
-        cpu.mult_hi,
-        expected_hi_out,
-        divmul_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        func,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        hi_in,
-        lo_in,
-        expected_hi_out,
-        expected_lo_out,
-        expected_exception,
-        cpu.mult_hi,
-        cpu.mult_lo,
-        cpu.last_exception
-    );
+        bus.memory.rdram.0[window..window + mem_bytes.len()].copy_from_slice(mem_bytes);
 
-    assert_eq!(
-        cpu.mult_lo,
-        expected_lo_out,
-        divmul_fail_str!(),
-        name,
-        instr,
-        op,
-        rs,
-        rt,
-        func,
-        reg_size,
-        rs,
-        rs_in,
-        rt,
-        rt_in,
-        hi_in,
-        lo_in,
-        expected_hi_out,
-        expected_lo_out,
-        expected_exception,
-        cpu.mult_hi,
-        cpu.mult_lo,
-        cpu.last_exception
-    );
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = base;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.execute_instruction(&mut bus, instr);
+
+        let rt_out = cpu.gpr[rt as usize];
+
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            load_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            base,
+            addr,
+            rt,
+            rt_in,
+            expected_rt_out,
+            expected_exception,
+            rt_out,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            rt_out,
+            expected_rt_out,
+            load_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            base,
+            addr,
+            rt,
+            rt_in,
+            expected_rt_out,
+            expected_exception,
+            rt_out,
+            cpu.last_exception
+        );
+    }
+
+    /// Like `test_load_instr`, but also checks `cpu.llbit` (for LL/LLD).
+    /// `llbit` is reset to `false` before execution.
+    #[allow(clippy::too_many_arguments)]
+    pub fn test_ll_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        base: u64,
+        immediate: u16,
+        rt_in: u64,
+        mem_bytes: &[u8],
+        expected_rt_out: u64,
+        expected_exception: Option<CpuException>,
+        expected_llbit: bool,
+        reg_size: Option<RegSize>,
+    ) {
+        if reg_size.is_none() {
+            test_ll_instr(
+                name,
+                op,
+                rs,
+                rt,
+                base,
+                immediate,
+                rt_in,
+                mem_bytes,
+                expected_rt_out,
+                expected_exception,
+                expected_llbit,
+                Some(RegSize::Reg32),
+            );
+            test_ll_instr(
+                name,
+                op,
+                rs,
+                rt,
+                base,
+                immediate,
+                rt_in,
+                mem_bytes,
+                expected_rt_out,
+                expected_exception,
+                expected_llbit,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
+
+        let reg_size = reg_size.unwrap();
+
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+        let instr = itype_instr(op, rs, rt, immediate as u32);
+        let addr = eff_addr(base, immediate);
+        let window = (addr - RDRAM_BASE) as usize;
+
+        bus.memory.rdram.0[window..window + mem_bytes.len()].copy_from_slice(mem_bytes);
+
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = base;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.llbit = false;
+        cpu.execute_instruction(&mut bus, instr);
+
+        let rt_out = cpu.gpr[rt as usize];
+
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            load_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            base,
+            addr,
+            rt,
+            rt_in,
+            expected_rt_out,
+            expected_exception,
+            rt_out,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            rt_out,
+            expected_rt_out,
+            load_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            base,
+            addr,
+            rt,
+            rt_in,
+            expected_rt_out,
+            expected_exception,
+            rt_out,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            cpu.llbit, expected_llbit,
+            "{}: expected llbit = {}, got llbit = {}",
+            name, expected_llbit, cpu.llbit
+        );
+    }
+
+    /// Test the execution of a store instruction. Pre-fills the `expected_mem`-
+    /// sized window at `mem_addr` with `STORE_SENTINEL`, executes, and compares
+    /// the resulting bytes and exception against expectations.
+    #[allow(clippy::too_many_arguments)]
+    pub fn test_store_instr(
+        name: &str,
+        op: u32,
+        rs: u32,
+        rt: u32,
+        base: u64,
+        immediate: u16,
+        rt_in: u64,
+        mem_addr: u64,
+        expected_mem: &[u8],
+        expected_exception: Option<CpuException>,
+        reg_size: Option<RegSize>,
+    ) {
+        if reg_size.is_none() {
+            test_store_instr(
+                name,
+                op,
+                rs,
+                rt,
+                base,
+                immediate,
+                rt_in,
+                mem_addr,
+                expected_mem,
+                expected_exception,
+                Some(RegSize::Reg32),
+            );
+            test_store_instr(
+                name,
+                op,
+                rs,
+                rt,
+                base,
+                immediate,
+                rt_in,
+                mem_addr,
+                expected_mem,
+                expected_exception,
+                Some(RegSize::Reg64),
+            );
+            return;
+        }
+
+        let reg_size = reg_size.unwrap();
+
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+        let instr = itype_instr(op, rs, rt, immediate as u32);
+        let addr = eff_addr(base, immediate);
+        let window = (mem_addr - RDRAM_BASE) as usize;
+
+        for b in bus.memory.rdram.0[window..window + expected_mem.len()].iter_mut() {
+            *b = STORE_SENTINEL;
+        }
+
+        cpu.reg_size = reg_size;
+        cpu.gpr[rs as usize] = base;
+        cpu.gpr[rt as usize] = rt_in;
+        cpu.execute_instruction(&mut bus, instr);
+
+        let actual_mem = bus.memory.rdram.0[window..window + expected_mem.len()].to_vec();
+
+        assert_eq!(
+            cpu.last_exception,
+            expected_exception,
+            store_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            base,
+            addr,
+            rt,
+            rt_in,
+            expected_mem,
+            expected_exception,
+            actual_mem,
+            cpu.last_exception
+        );
+
+        assert_eq!(
+            actual_mem,
+            expected_mem,
+            store_fail_str!(),
+            name,
+            instr,
+            op,
+            rs,
+            rt,
+            immediate,
+            reg_size,
+            rs,
+            base,
+            addr,
+            rt,
+            rt_in,
+            expected_mem,
+            expected_exception,
+            actual_mem,
+            cpu.last_exception
+        );
+    }
 }
 
 mod alu_instructions {
-    use super::{test_divmul_instr, test_itype_instr, test_rtype_instr};
+    use super::util::*;
     use crate::processors::vr4300::{CpuException, RegSize};
 
     /// Test the ADD instruction.
@@ -2680,7 +3100,1131 @@ mod alu_instructions {
     }
 }
 
-mod load_store_instructions {}
+mod load_store_instructions {
+    use super::util::*;
+    use crate::processors::vr4300::{CpuException, RegSize};
+
+    /// Test the LB instruction.
+    ///
+    /// # LB:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- sign_extend_u64::<8>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - None (any byte address is valid)
+    #[test]
+    fn test_lb() {
+        const OP: u32 = 0b100000;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test = |byte: u8, expected: u64| {
+            test_load_instr(
+                "LB",
+                OP,
+                rs,
+                rt,
+                base,
+                0,
+                rt_in,
+                base,
+                &[byte],
+                expected,
+                None,
+                None,
+            );
+        };
+
+        test(0x7F, 0x00000000_0000007F); // positive, no sign extension
+        test(0x80, 0xFFFFFFFF_FFFFFF80); // negative, sign-extended
+        test(0xFF, 0xFFFFFFFF_FFFFFFFF);
+    }
+
+    /// Test the LBU instruction.
+    ///
+    /// # LBU:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- zero_extend_u64::<8>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_lbu() {
+        const OP: u32 = 0b100100;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test = |byte: u8| {
+            test_load_instr(
+                "LBU",
+                OP,
+                rs,
+                rt,
+                base,
+                0,
+                rt_in,
+                base,
+                &[byte],
+                byte as u64,
+                None,
+                None,
+            );
+        };
+
+        test(0x7F);
+        test(0x80);
+        test(0xFF);
+    }
+
+    /// Test the LH instruction.
+    ///
+    /// # LH:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- sign_extend_u64::<16>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - AddressErrorLoad if the effective address is not 2-byte aligned
+    #[test]
+    fn test_lh() {
+        const OP: u32 = 0b100001;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_load_instr(
+            "LH",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x12, 0x34],
+            0x00000000_00001234,
+            None,
+            None,
+        );
+        test_load_instr(
+            "LH",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23],
+            0xFFFFFFFF_FFFF8123,
+            None,
+            None,
+        );
+
+        // Unaligned -> AddressErrorLoad, rt unchanged
+        test_load_instr(
+            "LH",
+            OP,
+            rs,
+            rt,
+            base,
+            1,
+            rt_in,
+            base + 1,
+            &[0x00, 0x00],
+            rt_in,
+            Some(CpuException::AddressErrorLoad),
+            None,
+        );
+    }
+
+    /// Test the LHU instruction.
+    ///
+    /// # LHU:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- zero_extend_u64::<16>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - AddressErrorLoad if the effective address is not 2-byte aligned
+    #[test]
+    fn test_lhu() {
+        const OP: u32 = 0b100101;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_load_instr(
+            "LHU",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x12, 0x34],
+            0x00000000_00001234,
+            None,
+            None,
+        );
+        test_load_instr(
+            "LHU",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23],
+            0x00000000_00008123,
+            None,
+            None,
+        );
+
+        test_load_instr(
+            "LHU",
+            OP,
+            rs,
+            rt,
+            base,
+            1,
+            rt_in,
+            base + 1,
+            &[0x00, 0x00],
+            rt_in,
+            Some(CpuException::AddressErrorLoad),
+            None,
+        );
+    }
+
+    /// Test the LW instruction.
+    ///
+    /// # LW:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- sign_extend_u64::<32>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - AddressErrorLoad if the effective address is not 4-byte aligned
+    #[test]
+    fn test_lw() {
+        const OP: u32 = 0b100011;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_load_instr(
+            "LW",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x12, 0x34, 0x56, 0x78],
+            0x00000000_12345678,
+            None,
+            None,
+        );
+        test_load_instr(
+            "LW",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23, 0x45, 0x67],
+            0xFFFFFFFF_81234567,
+            None,
+            None,
+        );
+
+        for imm in 1..4u16 {
+            test_load_instr(
+                "LW",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                base + imm as u64,
+                &[0, 0, 0, 0],
+                rt_in,
+                Some(CpuException::AddressErrorLoad),
+                None,
+            );
+        }
+    }
+
+    /// Test the LWU instruction.
+    ///
+    /// # LWU:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: `GPR[rt] <- zero_extend_u64::<32>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode)
+    /// - AddressErrorLoad if the effective address is not 4-byte aligned
+    #[test]
+    fn test_lwu() {
+        const OP: u32 = 0b100111;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_load_instr(
+            "LWU",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23, 0x45, 0x67],
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        test_load_instr(
+            "LWU",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23, 0x45, 0x67],
+            0x00000000_81234567,
+            None,
+            Some(RegSize::Reg64),
+        );
+
+        for imm in 1..4u16 {
+            test_load_instr(
+                "LWU",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                base + imm as u64,
+                &[0, 0, 0, 0],
+                rt_in,
+                Some(CpuException::AddressErrorLoad),
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    /// Test the LD instruction.
+    ///
+    /// # LD:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: `GPR[rt] <- Memory[GPR[rs] + sign_extend(imm)]`
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode)
+    /// - AddressErrorLoad if the effective address is not 8-byte aligned
+    #[test]
+    fn test_ld() {
+        const OP: u32 = 0b110111;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let bytes: [u8; 8] = [0x81, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
+
+        test_load_instr(
+            "LD",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &bytes,
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        test_load_instr(
+            "LD",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &bytes,
+            0x81234567_89ABCDEF,
+            None,
+            Some(RegSize::Reg64),
+        );
+
+        for imm in 1..8u16 {
+            test_load_instr(
+                "LD",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                base + imm as u64,
+                &[0; 8],
+                rt_in,
+                Some(CpuException::AddressErrorLoad),
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    /// Test the LL instruction.
+    ///
+    /// # LL:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- sign_extend_u64::<32>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// - `LLbit <- 1`
+    /// ## Exceptions:
+    /// - AddressErrorLoad if the effective address is not 4-byte aligned
+    #[test]
+    fn test_ll() {
+        const OP: u32 = 0b110000;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_ll_instr(
+            "LL",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            &[0x81, 0x23, 0x45, 0x67],
+            0xFFFFFFFF_81234567,
+            None,
+            true,
+            None,
+        );
+
+        for imm in 1..4u16 {
+            test_ll_instr(
+                "LL",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                &[0, 0, 0, 0],
+                rt_in,
+                Some(CpuException::AddressErrorLoad),
+                false,
+                None,
+            );
+        }
+    }
+
+    /// Test the LLD instruction.
+    ///
+    /// # LLD:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: `GPR[rt] <- Memory[GPR[rs] + sign_extend(imm)]`, `LLbit <- 1`
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode)
+    /// - AddressErrorLoad if the effective address is not 8-byte aligned
+    #[test]
+    fn test_lld() {
+        const OP: u32 = 0b110100;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+        let bytes: [u8; 8] = [0x81, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
+
+        test_ll_instr(
+            "LLD",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            &bytes,
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            false,
+            Some(RegSize::Reg32),
+        );
+
+        test_ll_instr(
+            "LLD",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            &bytes,
+            0x81234567_89ABCDEF,
+            None,
+            true,
+            Some(RegSize::Reg64),
+        );
+
+        for imm in 1..8u16 {
+            test_ll_instr(
+                "LLD",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                &[0; 8],
+                rt_in,
+                Some(CpuException::AddressErrorLoad),
+                false,
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    /// Test the LUI instruction.
+    ///
+    /// # LUI:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- sign_extend_u64::<32>(imm << 16)`
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_lui() {
+        const OP: u32 = 0b001111;
+        let rs: u32 = 0; // unused by LUI
+        let rt: u32 = 2;
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        let test = |imm: u16, expected: u64| {
+            test_itype_instr("LUI", OP, rs, rt, 0, rt_in, imm, expected, None, None);
+        };
+
+        test(0x1234, 0x00000000_12340000);
+        test(0x8000, 0xFFFFFFFF_80000000); // sign-extended
+    }
+
+    /// Test the LWL instruction.
+    ///
+    /// # LWL:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - Merges the high-order bytes of the addressed word into the
+    ///   low-order bytes of `GPR[rt]`, then sign-extends the 32-bit result.
+    /// ## Exceptions:
+    /// - None (never faults on alignment)
+    #[test]
+    fn test_lwl() {
+        const OP: u32 = 0b100010;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let word_bytes: [u8; 4] = [0x11, 0x22, 0x33, 0x44];
+        let word = u32::from_be_bytes(word_bytes);
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        for byte in 0..4u32 {
+            let shift = 8 * byte;
+            let mask: u32 = 0xFFFFFFFFu32 << shift;
+            let merged: u32 = ((rt_in as u32) & !mask) | (word << shift);
+            let expected: u64 = (merged as i32) as i64 as u64;
+
+            test_load_instr(
+                "LWL",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &word_bytes,
+                expected,
+                None,
+                None,
+            );
+        }
+    }
+
+    /// Test the LWR instruction.
+    ///
+    /// # LWR:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - Merges the low-order bytes of the addressed word into the
+    ///   high-order bytes of `GPR[rt]`, then sign-extends the 32-bit result.
+    /// ## Exceptions:
+    /// - None (never faults on alignment)
+    #[test]
+    fn test_lwr() {
+        const OP: u32 = 0b100110;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let word_bytes: [u8; 4] = [0x11, 0x22, 0x33, 0x44];
+        let word = u32::from_be_bytes(word_bytes);
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        for byte in 0..4u32 {
+            let shift = 8 * (3 - byte);
+            let mask: u32 = 0xFFFFFFFFu32 >> shift;
+            let merged: u32 = ((rt_in as u32) & !mask) | (word >> shift);
+            let expected: u64 = (merged as i32) as i64 as u64;
+
+            test_load_instr(
+                "LWR",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &word_bytes,
+                expected,
+                None,
+                None,
+            );
+        }
+    }
+
+    /// Test the LDL instruction.
+    ///
+    /// # LDL:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: merges the high-order bytes of the addressed doubleword
+    ///   into the low-order bytes of `GPR[rt]`.
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode); never faults on alignment
+    #[test]
+    fn test_ldl() {
+        const OP: u32 = 0b011010;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let dword_bytes: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+        let dword = u64::from_be_bytes(dword_bytes);
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_load_instr(
+            "LDL",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &dword_bytes,
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        for byte in 0..8u64 {
+            let shift = 8 * byte;
+            let mask: u64 = u64::MAX << shift;
+            let merged: u64 = (rt_in & !mask) | (dword << shift);
+
+            test_load_instr(
+                "LDL",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &dword_bytes,
+                merged,
+                None,
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    /// Test the LDR instruction.
+    ///
+    /// # LDR:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: merges the low-order bytes of the addressed doubleword
+    ///   into the high-order bytes of `GPR[rt]`.
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode); never faults on alignment
+    #[test]
+    fn test_ldr() {
+        const OP: u32 = 0b011011;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let dword_bytes: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+        let dword = u64::from_be_bytes(dword_bytes);
+        let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
+
+        test_load_instr(
+            "LDR",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &dword_bytes,
+            rt_in,
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        for byte in 0..8u64 {
+            let shift = 8 * (7 - byte);
+            let mask: u64 = u64::MAX >> shift;
+            let merged: u64 = (rt_in & !mask) | (dword >> shift);
+
+            test_load_instr(
+                "LDR",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &dword_bytes,
+                merged,
+                None,
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // Stores
+    // -------------------------------------------------------------------
+
+    /// Test the SB instruction.
+    ///
+    /// # SB:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `Memory[GPR[rs] + sign_extend(imm)] <- GPR[rt][7:0]`
+    /// ## Exceptions:
+    /// - None
+    #[test]
+    fn test_sb() {
+        const OP: u32 = 0b101000;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+
+        test_store_instr(
+            "SB",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            0xAAAAAAAA_AAAAAA7F,
+            base,
+            &[0x7F],
+            None,
+            None,
+        );
+        test_store_instr(
+            "SB",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            0x00000000_000000FF,
+            base,
+            &[0xFF],
+            None,
+            None,
+        );
+    }
+
+    /// Test the SH instruction.
+    ///
+    /// # SH:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `Memory[GPR[rs] + sign_extend(imm)] <- GPR[rt][15:0]`
+    /// ## Exceptions:
+    /// - AddressErrorStore if the effective address is not 2-byte aligned
+    #[test]
+    fn test_sh() {
+        const OP: u32 = 0b101001;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_A1B2C3D4;
+
+        test_store_instr(
+            "SH",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0xC3, 0xD4],
+            None,
+            None,
+        );
+
+        test_store_instr(
+            "SH",
+            OP,
+            rs,
+            rt,
+            base,
+            1,
+            rt_in,
+            base + 1,
+            &[STORE_SENTINEL, STORE_SENTINEL],
+            Some(CpuException::AddressErrorStore),
+            None,
+        );
+    }
+
+    /// Test the SW instruction.
+    ///
+    /// # SW:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `Memory[GPR[rs] + sign_extend(imm)] <- GPR[rt][31:0]`
+    /// ## Exceptions:
+    /// - AddressErrorStore if the effective address is not 4-byte aligned
+    #[test]
+    fn test_sw() {
+        const OP: u32 = 0b101011;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_81234567;
+
+        test_store_instr(
+            "SW",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23, 0x45, 0x67],
+            None,
+            None,
+        );
+
+        for imm in 1..4u16 {
+            test_store_instr(
+                "SW",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                base + imm as u64,
+                &[STORE_SENTINEL; 4],
+                Some(CpuException::AddressErrorStore),
+                None,
+            );
+        }
+    }
+
+    /// Test the SD instruction.
+    ///
+    /// # SD:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: `Memory[GPR[rs] + sign_extend(imm)] <- GPR[rt]`
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode)
+    /// - AddressErrorStore if the effective address is not 8-byte aligned
+    #[test]
+    fn test_sd() {
+        const OP: u32 = 0b111111;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0x81234567_89ABCDEF;
+
+        test_store_instr(
+            "SD",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[STORE_SENTINEL; 8],
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        test_store_instr(
+            "SD",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[0x81, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
+            None,
+            Some(RegSize::Reg64),
+        );
+
+        for imm in 1..8u16 {
+            test_store_instr(
+                "SD",
+                OP,
+                rs,
+                rt,
+                base,
+                imm,
+                rt_in,
+                base + imm as u64,
+                &[STORE_SENTINEL; 8],
+                Some(CpuException::AddressErrorStore),
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    /// Test the SWL instruction.
+    ///
+    /// # SWL:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - Stores the high-order bytes of `GPR[rt][31:0]` into the low-order
+    ///   bytes of the addressed word, preserving the rest of the word.
+    /// ## Exceptions:
+    /// - None (never faults on alignment)
+    #[test]
+    fn test_swl() {
+        const OP: u32 = 0b101010;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_11223344;
+        let old_word = u32::from_be_bytes([STORE_SENTINEL; 4]);
+
+        for byte in 0..4u32 {
+            let shift = 8 * byte;
+            let inv_mask: u32 = 0xFFFFFFFFu32 >> shift;
+            let merged: u32 = (old_word & !inv_mask) | (((rt_in as u32) >> shift) & inv_mask);
+
+            test_store_instr(
+                "SWL",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &merged.to_be_bytes(),
+                None,
+                None,
+            );
+        }
+    }
+
+    /// Test the SWR instruction.
+    ///
+    /// # SWR:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - Stores the low-order bytes of `GPR[rt][31:0]` into the high-order
+    ///   bytes of the addressed word, preserving the rest of the word.
+    /// ## Exceptions:
+    /// - None (never faults on alignment)
+    #[test]
+    fn test_swr() {
+        const OP: u32 = 0b101110;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0xAAAAAAAA_11223344;
+        let old_word = u32::from_be_bytes([STORE_SENTINEL; 4]);
+
+        for byte in 0..4u32 {
+            let shift = 8 * (3 - byte);
+            let inv_mask: u32 = 0xFFFFFFFFu32 << shift;
+            let merged: u32 = (old_word & !inv_mask) | (((rt_in as u32) << shift) & inv_mask);
+
+            test_store_instr(
+                "SWR",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &merged.to_be_bytes(),
+                None,
+                None,
+            );
+        }
+    }
+
+    /// Test the SDL instruction.
+    ///
+    /// # SDL:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: stores the high-order bytes of `GPR[rt]` into the
+    ///   low-order bytes of the addressed doubleword.
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode); never faults on alignment
+    #[test]
+    fn test_sdl() {
+        const OP: u32 = 0b101100;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0x11223344_55667788;
+        let old_dword = u64::from_be_bytes([STORE_SENTINEL; 8]);
+
+        test_store_instr(
+            "SDL",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[STORE_SENTINEL; 8],
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        for byte in 0..8u64 {
+            let shift = 8 * byte;
+            let inv_mask: u64 = u64::MAX >> shift;
+            let merged: u64 = (old_dword & !inv_mask) | ((rt_in >> shift) & inv_mask);
+
+            test_store_instr(
+                "SDL",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &merged.to_be_bytes(),
+                None,
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+
+    /// Test the SDR instruction.
+    ///
+    /// # SDR:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - 32-bit: Reserved Instruction Exception
+    /// - 64-bit: stores the low-order bytes of `GPR[rt]` into the
+    ///   high-order bytes of the addressed doubleword.
+    /// ## Exceptions:
+    /// - Reserved Instruction (32-bit mode); never faults on alignment
+    #[test]
+    fn test_sdr() {
+        const OP: u32 = 0b101101;
+        let rs: u32 = 1;
+        let rt: u32 = 2;
+        let base = RDRAM_BASE + 0x100;
+        let rt_in: u64 = 0x11223344_55667788;
+        let old_dword = u64::from_be_bytes([STORE_SENTINEL; 8]);
+
+        test_store_instr(
+            "SDR",
+            OP,
+            rs,
+            rt,
+            base,
+            0,
+            rt_in,
+            base,
+            &[STORE_SENTINEL; 8],
+            Some(CpuException::ReservedInstruction),
+            Some(RegSize::Reg32),
+        );
+
+        for byte in 0..8u64 {
+            let shift = 8 * (7 - byte);
+            let inv_mask: u64 = u64::MAX << shift;
+            let merged: u64 = (old_dword & !inv_mask) | ((rt_in << shift) & inv_mask);
+
+            test_store_instr(
+                "SDR",
+                OP,
+                rs,
+                rt,
+                base,
+                byte as u16,
+                rt_in,
+                base,
+                &merged.to_be_bytes(),
+                None,
+                Some(RegSize::Reg64),
+            );
+        }
+    }
+}
 
 mod branch_instructions {}
 
