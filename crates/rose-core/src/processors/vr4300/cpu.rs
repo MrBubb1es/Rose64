@@ -845,13 +845,11 @@ impl CpuVR4300 {
     }
 
     #[inline]
-    pub const fn translate_vaddr(&mut self, vaddr: u64) -> u32 {
-        let va = vaddr as u32;
-
-        match va {
+    pub const fn translate_vaddr(&mut self, vaddr: u32) -> u32 {
+        match vaddr {
             0x00000000..=0x7FFFFFFF => 0, /* KUSEG */ // TODO: User Segment, TLB mapped
-            0x80000000..=0x9FFFFFFF => va - 0x80000000, /* KSEG0 */
-            0xA0000000..=0xBFFFFFFF => va - 0xA0000000, /* KSEG1 */
+            0x80000000..=0x9FFFFFFF => vaddr - 0x80000000, /* KSEG0 */
+            0xA0000000..=0xBFFFFFFF => vaddr - 0xA0000000, /* KSEG1 */
             0xC0000000..=0xDFFFFFFF => 0, /* KSSEG */ // TODO: Kernel Supervisor segment, TLB mapped
             0xE0000000..=0xFFFFFFFF => 0, /* KSEG3 */ // TODO: Kernel Segment 3, TLB mapped
         }
@@ -861,9 +859,9 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             return Ok(unsafe { ptr.read_unaligned() });
         }
 
@@ -876,14 +874,14 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
 
         // Alignment check
-        if rose_unlikely(va & 1 != 0) {
+        if rose_unlikely(vaddr & 1 != 0) {
             return Err(CpuException::AddressErrorLoad);
         }
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             return Ok(unsafe { (ptr as *const u16).read_unaligned().to_be() });
         }
 
@@ -896,14 +894,14 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
 
         // Alignment check
-        if rose_unlikely(va & 3 != 0) {
+        if rose_unlikely(vaddr & 3 != 0) {
             return Err(CpuException::AddressErrorLoad);
         }
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             return Ok(unsafe { (ptr as *const u32).read_unaligned().to_be() });
         }
 
@@ -916,14 +914,14 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
 
         // Alignment check
         if rose_unlikely(vaddr & 7 != 0) {
             return Err(CpuException::AddressErrorLoad);
         }
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             return Ok(unsafe { (ptr as *const u64).read_unaligned().to_be() });
         }
 
@@ -939,9 +937,9 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 ptr.write_unaligned(value);
             }
@@ -959,14 +957,15 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
+        let value = value.to_be();
 
         // Alignment check
-        if rose_unlikely(va & 1 != 0) {
+        if rose_unlikely(vaddr & 1 != 0) {
             return Some(CpuException::AddressErrorStore);
         }
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 (ptr as *mut u16).write_unaligned(value);
             }
@@ -984,14 +983,15 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
+        let value = value.to_be();
 
         // Alignment check
-        if rose_unlikely(va & 3 != 0) {
+        if rose_unlikely(vaddr & 3 != 0) {
             return Some(CpuException::AddressErrorStore);
         }
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 (ptr as *mut u32).write_unaligned(value);
             }
@@ -1009,14 +1009,15 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
-        let va = vaddr as u32;
+        let vaddr = vaddr as u32;
+        let value = value.to_be();
 
         // Alignment check
         if rose_unlikely(vaddr & 7 != 0) {
             return Some(CpuException::AddressErrorStore);
         }
 
-        if let Some(ptr) = bus.memory.get_raw_mem(va) {
+        if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 (ptr as *mut u64).write_unaligned(value);
             }
@@ -1203,5 +1204,20 @@ mod tests {
 
         // Writes that throw exceptions should not go through
         assert_eq!(bus.memory.rdram.0[1], 0x00);
+    }
+
+    #[test]
+    fn test_read_write_sanity() {
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+
+        let _ = cpu.write16(&mut bus, RDRAM_BASE, 0x1122);
+        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE), Ok(0x1122));
+
+        let _ = cpu.write32(&mut bus, RDRAM_BASE, 0x33445566);
+        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE), Ok(0x33445566));
+
+        let _ = cpu.write64(&mut bus, RDRAM_BASE, 0x778899AA_BBCCDDEE);
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE), Ok(0x778899AA_BBCCDDEE));
     }
 }
