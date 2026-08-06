@@ -8,7 +8,9 @@
 //! -----------------------------------------------------------------------
 
 use crate::{
-    common::hint::rose_unlikely, memory::bus::{Bus, MemoryAccess}, processors::vr4300::cp0::Cp0,
+    common::hint::rose_unlikely,
+    memory::bus::{Bus, MemoryAccess},
+    processors::vr4300::cp0::Cp0,
 };
 
 /// Representation of the N64's VR4300 processor.
@@ -140,7 +142,6 @@ pub enum CpuException {
     ReservedInstruction,
     AddressErrorLoad,
     AddressErrorStore,
-    
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
@@ -163,12 +164,12 @@ impl CpuVR4300 {
 
     pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) -> Option<CpuException> {
         match self.exec_state {
-            ExecutionState::Normal => {}, // Fall through to normal execution
+            ExecutionState::Normal => {} // Fall through to normal execution
             ExecutionState::Delay(addr) => {
                 // If we're in a delay slot, jump on the NEXT instruction, but still
                 // execute the next opcode normally.
                 self.exec_state = ExecutionState::Jump(addr)
-            },
+            }
             ExecutionState::Jump(addr) => {
                 // Execute a previously set-up branch/jump instruction.
                 self.pc = addr;
@@ -403,7 +404,7 @@ impl CpuVR4300 {
                     if overflow {
                         return Some(CpuException::IntegerOverflow);
                     }
-                    
+
                     self.gpr[instr.rd as usize] = diff as u64;
                 }
                 35 => {
@@ -608,7 +609,7 @@ impl CpuVR4300 {
                 match rt {
                     0 => {
                         // BLTZ
-                        if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                             // Branch in a delay slot, do nothing.
                             return None;
                         }
@@ -619,11 +620,11 @@ impl CpuVR4300 {
                         if rs < 0 {
                             let addr = self.pc as i64 + offset;
                             self.exec_state = ExecutionState::Delay(addr as u64);
-                        } 
-                    },
+                        }
+                    }
                     1 => {
                         // BGEZ
-                        if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                             // Branch in a delay slot, do nothing.
                             return None;
                         }
@@ -634,20 +635,120 @@ impl CpuVR4300 {
                         if rs >= 0 {
                             let addr = self.pc as i64 + offset;
                             self.exec_state = ExecutionState::Delay(addr as u64);
-                        } 
-                    },
-                    2 => {}, // BLTZL
-                    3 => {}, // BGEZL
-                    8 => {}, // TGEI
-                    9 => {}, // TGEIU
-                    10 => {}, // TLTI
-                    11 => {}, // TLTIU
-                    12 => {}, // TEQI
-                    14 => {}, // TNEI
-                    16 => {}, // BLTZAL
-                    17 => {}, // BGEZAL
-                    18 => {}, // BLTZALL
-                    19 => {}, // BGEZALL
+                        }
+                    }
+                    2 => {
+                        // BLTZL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        if rs < 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.pc = addr as u64;
+                            return None;
+                        }
+                    }
+                    3 => {
+                        // BGEZL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        if rs >= 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.pc = addr as u64;
+                            return None;
+                        }
+                    }
+                    8 => {}  // TGEI
+                    9 => {}  // TGEIU
+                    10 => {} // TLTI
+                    11 => {} // TLTIU
+                    12 => {} // TEQI
+                    14 => {} // TNEI
+                    16 => {
+                        // BLTZAL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        // Set link register to predicted addr
+                        self.gpr[31] = self.pc + 4;
+
+                        if rs < 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.exec_state = ExecutionState::Delay(addr as u64);
+                        }
+                    }
+                    17 => {
+                        // BGEZAL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        // Set link register to predicted addr
+                        self.gpr[31] = self.pc + 4;
+
+                        if rs >= 0 {
+                            let addr = self.pc as i64 + offset;
+                            self.exec_state = ExecutionState::Delay(addr as u64);
+                        }
+                    }
+                    18 => {
+                        // BLTZALL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        // Set link register to predicted instruction addr
+                        let branch_addr = (self.pc as i64 + offset) as u64;
+                        self.gpr[31] = branch_addr
+
+                        if rs < 0 {
+                            self.pc = branch_addr as u64;
+                            return None;
+                        }
+                    }
+                    19 => {
+                        // BGEZALL
+                        if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                            // Branch in a delay slot, do nothing.
+                            return None;
+                        }
+
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let offset = ((instr.immediate as i16) as i64) << 2;
+                        // Set link register to predicted instruction addr
+                        let branch_addr = (self.pc as i64 + offset) as u64;
+                        self.gpr[31] = branch_addr
+
+                        if rs >= 0 {
+                            self.pc = branch_addr as u64;
+                            return None;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -655,7 +756,7 @@ impl CpuVR4300 {
             3 => {} // JAL
             4 => {
                 // BEQ
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
@@ -671,7 +772,7 @@ impl CpuVR4300 {
             }
             5 => {
                 // BNE
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
@@ -687,7 +788,7 @@ impl CpuVR4300 {
             }
             6 => {
                 // BLEZ
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
@@ -702,7 +803,7 @@ impl CpuVR4300 {
             }
             7 => {
                 // BGTZ
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
@@ -782,23 +883,70 @@ impl CpuVR4300 {
             18 => {} // COP2
             20 => {
                 // BEQL
-                if rose_unlikely(self.exec_state != ExecutionState::Normal)  {
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
                     // Branch in a delay slot, do nothing.
                     return None;
                 }
-                
+
                 let instr = ITypeInstruction::from_raw(i);
                 let rs = self.gpr[instr.rs as usize] as i64;
                 let rt = self.gpr[instr.rt as usize] as i64;
                 let offset = ((instr.immediate as i16) as i64) << 2;
-                if rs < 0 {
+                if rs == rt {
                     let addr = self.pc as i64 + offset;
-                    self.exec_state = ExecutionState::Delay(addr as u64);
-                } 
-            } // BEQL
-            21 => {} // BNEL
-            22 => {} // BLEZL
-            23 => {} // BGTZL
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
+            21 => {
+                // BNEL
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                    // Branch in a delay slot, do nothing.
+                    return None;
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let rt = self.gpr[instr.rt as usize] as i64;
+                let offset = ((instr.immediate as i16) as i64) << 2;
+                if rs != rt {
+                    let addr = self.pc as i64 + offset;
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
+            22 => {
+                // BLEZL
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                    // Branch in a delay slot, do nothing.
+                    return None;
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let offset = ((instr.immediate as i16) as i64) << 2;
+                if rs <= 0 {
+                    let addr = self.pc as i64 + offset;
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
+            23 => {
+                // BGTZL
+                if rose_unlikely(self.exec_state != ExecutionState::Normal) {
+                    // Branch in a delay slot, do nothing.
+                    return None;
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let rs = self.gpr[instr.rs as usize] as i64;
+                let offset = ((instr.immediate as i16) as i64) << 2;
+                if rs <= 0 {
+                    let addr = self.pc as i64 + offset;
+                    self.pc = addr as u64;
+                    return None;
+                }
+            }
             24 => {
                 // DADDI
                 if self.reg_size == RegSize::Reg32 {
@@ -809,7 +957,7 @@ impl CpuVR4300 {
                 let rs = self.gpr[instr.rs as usize] as i64;
                 let immediate = (instr.immediate as i16) as i64;
                 let (result, overflow) = rs.overflowing_add(immediate);
-                
+
                 if overflow {
                     return Some(CpuException::IntegerOverflow);
                 }
@@ -860,7 +1008,8 @@ impl CpuVR4300 {
                 let temp = 8 * (byte_offset + 1);
                 let mask = 0xFFFFFFFF_FFFFFFFFu64.checked_shr(temp as u32).unwrap_or(0);
                 let shift = 64 - temp;
-                self.gpr[instr.rt as usize] = (self.gpr[instr.rt as usize] & mask) | (value << shift);
+                self.gpr[instr.rt as usize] =
+                    (self.gpr[instr.rt as usize] & mask) | (value << shift);
             }
             27 => {
                 // LDR
@@ -892,9 +1041,12 @@ impl CpuVR4300 {
 
                 // Same result as match but no branching
                 let temp = 8 * byte_offset;
-                let mask = 0xFFFFFFFF_FFFFFFFFu64.checked_shr(64 - temp as u32).unwrap_or(0);
+                let mask = 0xFFFFFFFF_FFFFFFFFu64
+                    .checked_shr(64 - temp as u32)
+                    .unwrap_or(0);
                 let shift = temp;
-                self.gpr[instr.rt as usize] = (self.gpr[instr.rt as usize] & mask) | (value >> shift);
+                self.gpr[instr.rt as usize] =
+                    (self.gpr[instr.rt as usize] & mask) | (value >> shift);
             }
             32 => {
                 // LB
@@ -1077,12 +1229,12 @@ impl CpuVR4300 {
                 match byte_offset {
                     0 => {
                         self.write64(bus, vaddr, value)?;
-                    },
+                    }
                     1 => {
                         self.write8(bus, vaddr, (value >> 56) as u8)?;
                         self.write16(bus, vaddr + 1, (value >> 40) as u16)?;
                         self.write32(bus, vaddr + 3, (value >> 8) as u32)?;
-                    },
+                    }
                     2 => {
                         self.write16(bus, vaddr, (value >> 48) as u16)?;
                         self.write32(bus, vaddr + 2, (value >> 16) as u32)?;
@@ -1122,12 +1274,12 @@ impl CpuVR4300 {
                 match byte_offset {
                     0 => {
                         self.write64(bus, vaddr, value)?;
-                    },
+                    }
                     1 => {
                         self.write8(bus, vaddr, (value >> 48) as u8)?;
                         self.write16(bus, vaddr + 1, (value >> 32) as u16)?;
                         self.write32(bus, vaddr + 3, value as u32)?;
-                    },
+                    }
                     2 => {
                         self.write16(bus, vaddr, (value >> 40) as u16)?;
                         self.write32(bus, vaddr + 2, value as u32)?;
@@ -1553,10 +1705,7 @@ mod tests {
 
         assert_eq!(cpu.read32(&mut bus, RDRAM_BASE), Ok(0x18192021));
 
-        assert_eq!(
-            cpu.read64(&mut bus, RDRAM_BASE),
-            Ok(0x18192021_78798081)
-        );
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE), Ok(0x18192021_78798081));
 
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE, 0x00), None);
         assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 1, 0x00), None);
