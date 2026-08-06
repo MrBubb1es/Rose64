@@ -157,7 +157,7 @@ impl CpuVR4300 {
         }
     }
 
-    pub fn execute_instruction(&mut self, i: u32) {
+    pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) {
         let opcode = i >> 26;
 
         match opcode {
@@ -702,18 +702,108 @@ impl CpuVR4300 {
             }
             26 => {} // LDL
             27 => {} // LDR
-            32 => {} // LB
-            33 => {} // LH
+            32 => {
+                // LB
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                match self.read8(bus, addr) {
+                    Ok(data) => self.gpr[instr.rt as usize] = data as i8 as u64,
+                    Err(e) => self.raise_exception(e),
+                }
+            }
+            33 => {
+                // LH
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                match self.read16(bus, addr) {
+                    Ok(data) => self.gpr[instr.rt as usize] = data as i16 as u64,
+                    Err(e) => self.raise_exception(e),
+                }
+            }
             34 => {} // LWL
-            35 => {} // LW
-            36 => {} // LBU
-            37 => {} // LHU
+            35 => {
+                // LW
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                match self.read32(bus, addr) {
+                    Ok(data) => self.gpr[instr.rt as usize] = data as i32 as u64,
+                    Err(e) => self.raise_exception(e),
+                }
+            }
+            36 => {
+                // LBU
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                match self.read8(bus, addr) {
+                    Ok(data) => self.gpr[instr.rt as usize] = data as u64,
+                    Err(e) => self.raise_exception(e),
+                }
+            }
+            37 => {
+                // LHU
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                match self.read16(bus, addr) {
+                    Ok(data) => self.gpr[instr.rt as usize] = data as u64,
+                    Err(e) => self.raise_exception(e),
+                }
+            }
             38 => {} // LWR
-            39 => {} // LWU
-            40 => {} // SB
-            41 => {} // SH
+            39 => {
+                // LWU
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                match self.read32(bus, addr) {
+                    Ok(data) => self.gpr[instr.rt as usize] = data as u64,
+                    Err(e) => self.raise_exception(e),
+                }
+            }
+            40 => {
+                // SB
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                let data = self.gpr[instr.rt as usize] as u8;
+                if let Some(e) =  self.write8(bus, addr, data) {
+                    self.raise_exception(e);
+                }
+            }
+            41 => {
+                // SH
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                let data = self.gpr[instr.rt as usize] as u16;
+                if let Some(e) =  self.write16(bus, addr, data) {
+                    self.raise_exception(e);
+                }
+            }
             42 => {} // SWL
-            43 => {} // SD
+            43 => {
+                // SW
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                let data = self.gpr[instr.rt as usize] as u32;
+                if let Some(e) =  self.write32(bus, addr, data) {
+                    self.raise_exception(e);
+                }
+            }
             44 => {} // SDL
             45 => {} // SDR
             46 => {} // SWR
@@ -724,14 +814,39 @@ impl CpuVR4300 {
             52 => {} // LLD
             53 => {} // LDC1
             54 => {} // LDC2
-            55 => {} // LD
+            55 => {
+                // LD
+                match self.reg_size {
+                    RegSize::Reg32 => self.raise_exception(CpuException::ReservedInstruction),
+                    RegSize::Reg64 => {
+                        let instr = ITypeInstruction::from_raw(i);
+                        let base = self.gpr[instr.rs as usize] as i64;
+                        let offset = (instr.immediate as i16) as i64;
+                        let addr = (base + offset) as u64;
+                        match self.read64(bus, addr) {
+                            Ok(data) => self.gpr[instr.rt as usize] = data,
+                            Err(e) => self.raise_exception(e),
+                        }
+                    }
+                }
+            }
             56 => {} // SC
             57 => {} // SWC1
             58 => {} // SWC2
             60 => {} // SCD
             61 => {} // SDC1
             62 => {} // SDC2
-            63 => {} // SD
+            63 => {
+                // SD
+                let instr = ITypeInstruction::from_raw(i);
+                let base = self.gpr[instr.rs as usize] as i64;
+                let offset = (instr.immediate as i16) as i64;
+                let addr = (base + offset) as u64;
+                let data = self.gpr[instr.rt as usize];
+                if let Some(e) =  self.write64(bus, addr, data) {
+                    self.raise_exception(e);
+                }
+            }
             _ => panic!("Unrecogized opcode: {opcode}"),
         }
 
