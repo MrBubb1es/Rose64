@@ -8,8 +8,7 @@
 //! -----------------------------------------------------------------------
 
 use crate::{
-    common::hint::rose_unlikely,
-    memory::bus::{Bus, MemoryAccess},
+    common::hint::rose_unlikely, memory::bus::{Bus, MemoryAccess}, processors::vr4300::cp0::Cp0,
 };
 
 /// Representation of the N64's VR4300 processor.
@@ -26,6 +25,8 @@ pub struct CpuVR4300 {
     pub llbit: bool,
     pub reg_size: RegSize,
     pub last_exception: Option<CpuException>,
+
+    pub cp0: Cp0,
 }
 
 /// Data for an I-type instruction. An I-Type instruction has the structure:
@@ -691,10 +692,10 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.immediate as i16) as u64;
-                let addr = self.gpr[instr.rs as usize] + offset;
-                let addr_aligned = addr & !7;
-                let byte_offset = addr & 7;
-                let value = match self.read64(bus, addr_aligned) {
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr_aligned = vaddr & !7;
+                let byte_offset = vaddr & 7;
+                let value = match self.read64(bus, vaddr_aligned) {
                     Ok(data) => data,
                     Err(e) => return Some(e),
                 };
@@ -725,10 +726,10 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.immediate as i16) as u64;
-                let addr = self.gpr[instr.rs as usize] + offset;
-                let addr_aligned = addr & !7;
-                let byte_offset = addr & 7;
-                let value = match self.read64(bus, addr_aligned) {
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr_aligned = vaddr & !7;
+                let byte_offset = vaddr & 7;
+                let value = match self.read64(bus, vaddr_aligned) {
                     Ok(data) => data,
                     Err(e) => return Some(e),
                 };
@@ -755,9 +756,9 @@ impl CpuVR4300 {
                 // LB
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.immediate as i16) as u64;
-                let addr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
 
-                match self.read8(bus, addr) {
+                match self.read8(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = (data as i8) as u64,
                     Err(e) => return Some(e),
                 }
@@ -765,10 +766,9 @@ impl CpuVR4300 {
             33 => {
                 // LH
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                match self.read16(bus, addr) {
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                match self.read16(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = (data as i16) as u64,
                     Err(e) => return Some(e),
                 }
@@ -777,10 +777,10 @@ impl CpuVR4300 {
                 // LWL
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.immediate as i16) as u64;
-                let addr = self.gpr[instr.rs as usize] + offset;
-                let addr_aligned = addr & !3;
-                let byte_offset = addr & 3;
-                let value = match self.read32(bus, addr_aligned) {
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr_aligned = vaddr & !3;
+                let byte_offset = vaddr & 3;
+                let value = match self.read32(bus, vaddr_aligned) {
                     Ok(data) => data,
                     Err(e) => return Some(e), // TODO: probably cold path
                 };
@@ -804,10 +804,9 @@ impl CpuVR4300 {
             35 => {
                 // LW
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                match self.read32(bus, addr) {
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                match self.read32(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = (data as i32) as u64,
                     Err(e) => return Some(e),
                 }
@@ -815,22 +814,20 @@ impl CpuVR4300 {
             36 => {
                 // LBU
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                match self.read8(bus, addr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = data as u64,
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                match self.read8(bus, vaddr) {
+                    Ok(value) => self.gpr[instr.rt as usize] = value as u64,
                     Err(e) => return Some(e),
                 }
             }
             37 => {
                 // LHU
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                match self.read16(bus, addr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = data as u64,
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                match self.read16(bus, vaddr) {
+                    Ok(value) => self.gpr[instr.rt as usize] = value as u64,
                     Err(e) => return Some(e),
                 }
             }
@@ -838,11 +835,11 @@ impl CpuVR4300 {
                 // LWR
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.immediate as i16) as u64;
-                let addr = self.gpr[instr.rs as usize] + offset;
-                let addr_aligned = addr & !3;
-                let byte_offset = addr & 3;
-                let value = match self.read32(bus, addr_aligned) {
-                    Ok(data) => data,
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr_aligned = vaddr & !3;
+                let byte_offset = vaddr & 3;
+                let value = match self.read32(bus, vaddr_aligned) {
+                    Ok(v) => v,
                     Err(e) => return Some(e),
                 };
 
@@ -865,10 +862,9 @@ impl CpuVR4300 {
             39 => {
                 // LWU
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                match self.read32(bus, addr) {
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                match self.read32(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = data as u64,
                     Err(e) => return Some(e),
                 }
@@ -876,20 +872,18 @@ impl CpuVR4300 {
             40 => {
                 // SB
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
                 let data = self.gpr[instr.rt as usize] as u8;
-                self.write8(bus, addr, data)?;
+                self.write8(bus, vaddr, data)?;
             }
             41 => {
                 // SH
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
                 let data = self.gpr[instr.rt as usize] as u16;
-                self.write16(bus, addr, data)?;
+                self.write16(bus, vaddr, data)?;
             }
             42 => {
                 // SWL
@@ -919,11 +913,10 @@ impl CpuVR4300 {
             43 => {
                 // SW
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
                 let data = self.gpr[instr.rt as usize] as u32;
-                self.write32(bus, addr, data)?;
+                self.write32(bus, vaddr, data)?;
             }
             44 => {
                 // SDL
@@ -1041,10 +1034,46 @@ impl CpuVR4300 {
                 }
             }
             47 => {} // CASH
-            48 => {} // LL
+            48 => {
+                // LL
+                let instr = ITypeInstruction::from_raw(i);
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let paddr = match self.translate_vaddr(vaddr as u32) {
+                    Ok(pa) => pa,
+                    Err(e) => return Some(e),
+                };
+                let value = match self.read32(bus, vaddr) {
+                    Ok(v) => v,
+                    Err(e) => return Some(e),
+                };
+                self.gpr[instr.rt as usize] = (value as i32) as u64;
+                self.cp0.lladdr = paddr;
+                self.llbit = true;
+            }
             49 => {} // LWC1
             50 => {} // LWC2
-            52 => {} // LLD
+            52 => {
+                // LLD
+                if self.reg_size == RegSize::Reg32 {
+                    return Some(CpuException::ReservedInstruction);
+                }
+
+                let instr = ITypeInstruction::from_raw(i);
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let paddr = match self.translate_vaddr(vaddr as u32) {
+                    Ok(pa) => pa,
+                    Err(e) => return Some(e),
+                };
+                let value = match self.read64(bus, vaddr) {
+                    Ok(v) => v,
+                    Err(e) => return Some(e),
+                };
+                self.gpr[instr.rt as usize] = value;
+                self.cp0.lladdr = paddr;
+                self.llbit = true;
+            }
             53 => {} // LDC1
             54 => {} // LDC2
             55 => {
@@ -1054,10 +1083,9 @@ impl CpuVR4300 {
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                match self.read64(bus, addr) {
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                match self.read64(bus, vaddr) {
                     Ok(data) => self.gpr[instr.rt as usize] = data,
                     Err(e) => return Some(e),
                 }
@@ -1099,11 +1127,10 @@ impl CpuVR4300 {
             63 => {
                 // SD
                 let instr = ITypeInstruction::from_raw(i);
-                let base = self.gpr[instr.rs as usize] as i64;
-                let offset = (instr.immediate as i16) as i64;
-                let addr = (base + offset) as u64;
-                let data = self.gpr[instr.rt as usize];
-                self.write64(bus, addr, data)?;
+                let offset = (instr.immediate as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let value = self.gpr[instr.rt as usize];
+                self.write64(bus, vaddr, value)?;
             }
             _ => panic!("Unrecogized opcode: {opcode}"),
         }
@@ -1114,13 +1141,13 @@ impl CpuVR4300 {
     }
 
     #[inline]
-    pub const fn translate_vaddr(&mut self, vaddr: u32) -> u32 {
+    pub const fn translate_vaddr(&mut self, vaddr: u32) -> Result<u32, CpuException> {
         match vaddr {
-            0x00000000..=0x7FFFFFFF => 0, /* KUSEG */ // TODO: User Segment, TLB mapped
-            0x80000000..=0x9FFFFFFF => vaddr - 0x80000000, /* KSEG0 */
-            0xA0000000..=0xBFFFFFFF => vaddr - 0xA0000000, /* KSEG1 */
-            0xC0000000..=0xDFFFFFFF => 0, /* KSSEG */ // TODO: Kernel Supervisor segment, TLB mapped
-            0xE0000000..=0xFFFFFFFF => 0, /* KSEG3 */ // TODO: Kernel Segment 3, TLB mapped
+            0x00000000..=0x7FFFFFFF => Ok(0), /* KUSEG */ // TODO: User Segment, TLB mapped
+            0x80000000..=0x9FFFFFFF => Ok(vaddr - 0x80000000), /* KSEG0 */
+            0xA0000000..=0xBFFFFFFF => Ok(vaddr - 0xA0000000), /* KSEG1 */
+            0xC0000000..=0xDFFFFFFF => Ok(0), /* KSSEG */ // TODO: Kernel Supervisor segment, TLB mapped
+            0xE0000000..=0xFFFFFFFF => Ok(0), /* KSEG3 */ // TODO: Kernel Segment 3, TLB mapped
         }
     }
 
@@ -1134,7 +1161,7 @@ impl CpuVR4300 {
             return Ok(unsafe { ptr.read_unaligned() });
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = self.translate_vaddr(vaddr)?;
 
         Ok(bus.read8(paddr))
     }
@@ -1154,7 +1181,7 @@ impl CpuVR4300 {
             return Ok(unsafe { (ptr as *const u16).read_unaligned().to_be() });
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = self.translate_vaddr(vaddr)?;
 
         Ok(bus.read16(paddr))
     }
@@ -1174,7 +1201,7 @@ impl CpuVR4300 {
             return Ok(unsafe { (ptr as *const u32).read_unaligned().to_be() });
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = self.translate_vaddr(vaddr)?;
 
         Ok(bus.read32(paddr))
     }
@@ -1194,7 +1221,7 @@ impl CpuVR4300 {
             return Ok(unsafe { (ptr as *const u64).read_unaligned().to_be() });
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = self.translate_vaddr(vaddr)?;
 
         let hi = bus.read32(paddr) as u64;
         let lo = bus.read32(paddr + 4) as u64;
@@ -1215,7 +1242,10 @@ impl CpuVR4300 {
             return None;
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = match self.translate_vaddr(vaddr) {
+            Ok(pa) => pa,
+            Err(e) => return Some(e),
+        };
 
         bus.write8(paddr, value);
 
@@ -1241,7 +1271,10 @@ impl CpuVR4300 {
             return None;
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = match self.translate_vaddr(vaddr) {
+            Ok(pa) => pa,
+            Err(e) => return Some(e),
+        };
 
         bus.write16(paddr, value);
 
@@ -1267,7 +1300,10 @@ impl CpuVR4300 {
             return None;
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = match self.translate_vaddr(vaddr) {
+            Ok(pa) => pa,
+            Err(e) => return Some(e),
+        };
 
         bus.write32(paddr, value);
 
@@ -1293,7 +1329,10 @@ impl CpuVR4300 {
             return None;
         }
 
-        let paddr = self.translate_vaddr(vaddr);
+        let paddr = match self.translate_vaddr(vaddr) {
+            Ok(pa) => pa,
+            Err(e) => return Some(e),
+        };
 
         bus.write32(paddr, (value >> 32) as u32);
         bus.write32(paddr, value as u32);
