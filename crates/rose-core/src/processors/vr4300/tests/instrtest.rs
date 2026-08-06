@@ -497,7 +497,6 @@ mod util {
     /// address at which `mem_bytes` is written into RDRAM before execution
     /// (equal to the effective address for simple loads; the aligned
     /// word/dword address for LWL/LWR/LDL/LDR).
-    #[allow(clippy::too_many_arguments)]
     pub fn test_load_instr(
         name: &str,
         op: u32,
@@ -608,7 +607,6 @@ mod util {
 
     /// Like `test_load_instr`, but also checks `cpu.llbit` (for LL/LLD).
     /// `llbit` is reset to `false` before execution.
-    #[allow(clippy::too_many_arguments)]
     pub fn test_ll_instr(
         name: &str,
         op: u32,
@@ -727,7 +725,6 @@ mod util {
     /// Test the execution of a store instruction. Pre-fills the `expected_mem`-
     /// sized window at `mem_addr` with `STORE_SENTINEL`, executes, and compares
     /// the resulting bytes and exception against expectations.
-    #[allow(clippy::too_many_arguments)]
     pub fn test_store_instr(
         name: &str,
         op: u32,
