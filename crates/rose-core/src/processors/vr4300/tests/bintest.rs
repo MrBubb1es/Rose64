@@ -150,7 +150,7 @@ mod bintest {
                 }
             }
 
-            cpu.execute_instruction(instr);
+            cpu.execute_instruction(&mut bus, instr);
             instruction_count += 1;
         }
 

@@ -893,7 +893,7 @@ impl CpuVR4300 {
         }
 
         if let Some(ptr) = bus.memory.get_raw_mem(va) {
-            return Ok(unsafe { (ptr as *const u16).read_unaligned() });
+            return Ok(unsafe { (ptr as *const u16).read_unaligned().to_be() });
         }
 
         let paddr = self.translate_vaddr(vaddr);
@@ -913,7 +913,7 @@ impl CpuVR4300 {
         }
 
         if let Some(ptr) = bus.memory.get_raw_mem(va) {
-            return Ok(unsafe { (ptr as *const u32).read_unaligned() });
+            return Ok(unsafe { (ptr as *const u32).read_unaligned().to_be() });
         }
 
         let paddr = self.translate_vaddr(vaddr);
@@ -924,6 +924,11 @@ impl CpuVR4300 {
     fn read64(&mut self, bus: &mut Bus, vaddr: u64) -> Result<u64, CpuException> {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
+
+        // Alignment check
+        if rose_unlikely(vaddr & 7 != 0) {
+            return Err(CpuException::AddressErrorLoad);
+        }
 
         let hi = self.read32(bus, vaddr)? as u64;
         let lo = self.read32(bus, vaddr + 4)? as u64;
@@ -1004,6 +1009,11 @@ impl CpuVR4300 {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
+        // Alignment check
+        if rose_unlikely(vaddr & 7 != 0) {
+            return Some(CpuException::AddressErrorStore);
+        }
+
         self.write32(bus, vaddr, (value >> 32) as u32)?;
         self.write32(bus, vaddr + 4, value as u32)?;
         None
@@ -1015,5 +1025,93 @@ impl CpuVR4300 {
 
     pub fn get_last_exception(&mut self) -> Option<CpuException> {
         self.last_exception
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{memory::bus::Bus, processors::vr4300::{CpuException, CpuVR4300}};
+
+    const RDRAM_BASE: u64 = 0xFFFFFFFF_80000000;
+
+    fn test_rom() -> Vec<u8> {
+        use crate::common::consts::MB;
+
+        vec![0; 8 * MB]
+    }
+
+    #[test]
+    fn test_unaligned_address_exceptions() {
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+
+        bus.memory.rdram.0[0] = 0x18;
+        bus.memory.rdram.0[1] = 0x19;
+        bus.memory.rdram.0[2] = 0x20;
+        bus.memory.rdram.0[3] = 0x21;
+
+        bus.memory.rdram.0[4] = 0x78;
+        bus.memory.rdram.0[5] = 0x79;
+        bus.memory.rdram.0[6] = 0x80;
+        bus.memory.rdram.0[7] = 0x81;
+
+        // Happy paths, should throw no exceptions
+        assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 0), Ok(0x18));
+        assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 1), Ok(0x19));
+        assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 2), Ok(0x20));
+        assert_eq!(cpu.read8(&mut bus, RDRAM_BASE + 3), Ok(0x21));
+
+        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE + 0), Ok(0x1819));
+        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE + 2), Ok(0x2021));
+
+        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE + 0), Ok(0x18192021));
+
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 0), Ok(0x18192021_78798081));
+
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 0, 0x00), None);
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 1, 0x00), None);
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 2, 0x00), None);
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 3, 0x00), None);
+
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 0, 0x00), None);
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 2, 0x00), None);
+
+        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE + 0, 0x00), None);
+
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 0, 0x00), None);
+
+        // Unhappy paths, should throw AddressErrorLoad/Store
+        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE + 1), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read16(&mut bus, RDRAM_BASE + 3), Err(CpuException::AddressErrorLoad));
+
+        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE + 1), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE + 2), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read32(&mut bus, RDRAM_BASE + 3), Err(CpuException::AddressErrorLoad));
+
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 1), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 2), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 3), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 4), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 5), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 6), Err(CpuException::AddressErrorLoad));
+        assert_eq!(cpu.read64(&mut bus, RDRAM_BASE + 7), Err(CpuException::AddressErrorLoad));
+
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 1, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 3, 0x01), Some(CpuException::AddressErrorStore));
+
+        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE + 1, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE + 2, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE + 3, 0x01), Some(CpuException::AddressErrorStore));
+
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 1, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 2, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 3, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 4, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 5, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 6, 0x01), Some(CpuException::AddressErrorStore));
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE + 7, 0x01), Some(CpuException::AddressErrorStore));
+
+        // Writes that throw exceptions should not go through
+        assert_eq!(bus.memory.rdram.0[1], 0x00);
     }
 }

@@ -7,7 +7,9 @@
 //! Author(s): MrBubblezsz, logocrazymon
 //! -----------------------------------------------------------------------
 
-use crate::processors::vr4300::{CpuException, CpuVR4300, RegSize};
+#![cfg(test)]
+
+use crate::{memory::bus::Bus, processors::vr4300::{CpuException, CpuVR4300, RegSize}};
 
 macro_rules! itype_fail_str {
     () => {
@@ -100,6 +102,12 @@ fn rtype_instr(op: u32, rs: u32, rt: u32, rd: u32, sa: u32, func: u32) -> u32 {
     (op << 26) | (rs << 21) | (rt << 16) | (rd << 11) | (sa << 6) | func
 }
 
+fn test_rom() -> Vec<u8> {
+    use crate::common::consts::MB;
+
+    vec![0; 8 * MB]
+}
+
 /// Test the execution of an I-Type instruction. Checks register and
 /// exception output vs. expected.
 fn test_itype_instr(
@@ -146,12 +154,13 @@ fn test_itype_instr(
     let reg_size = reg_size.unwrap();
 
     let mut cpu = CpuVR4300::new();
+    let mut bus = Bus::new(test_rom()).unwrap();
     let instr = itype_instr(op, rs, rt, immediate as u32);
 
     cpu.reg_size = reg_size;
     cpu.gpr[rs as usize] = rs_in;
     cpu.gpr[rt as usize] = rt_in;
-    cpu.execute_instruction(instr);
+    cpu.execute_instruction(&mut bus, instr);
 
     let rt_out = cpu.gpr[rt as usize];
 
@@ -253,13 +262,14 @@ fn test_rtype_instr(
     let reg_size = reg_size.unwrap();
 
     let mut cpu = CpuVR4300::new();
+    let mut bus = Bus::new(test_rom()).unwrap();
     let instr = rtype_instr(op, rs, rt, rd, sa, func);
 
     cpu.reg_size = reg_size;
     cpu.gpr[rs as usize] = rs_in;
     cpu.gpr[rt as usize] = rt_in;
     cpu.gpr[rd as usize] = rd_in;
-    cpu.execute_instruction(instr);
+    cpu.execute_instruction(&mut bus, instr);
 
     let rd_out = cpu.gpr[rd as usize];
 
@@ -331,6 +341,7 @@ fn test_divmul_instr(
     reg_size: RegSize,
 ) {
     let mut cpu = CpuVR4300::new();
+    let mut bus = Bus::new(test_rom()).unwrap();
     let instr = rtype_instr(op, rs, rt, 0, 0, func);
 
     cpu.reg_size = reg_size;
@@ -338,7 +349,7 @@ fn test_divmul_instr(
     cpu.gpr[rt as usize] = rt_in;
     cpu.mult_hi = hi_in;
     cpu.mult_lo = hi_in;
-    cpu.execute_instruction(instr);
+    cpu.execute_instruction(&mut bus, instr);
 
     assert_eq!(
         cpu.last_exception,
@@ -2680,7 +2691,24 @@ mod alu_instructions {
     }
 }
 
-mod load_store_instructions {}
+mod load_store_instructions {
+    // /// Test the LB instruction
+    // ///
+    // /// # LB:
+    // /// ## Type:
+    // /// - R-Type
+    // /// ## Operation:
+    // /// - 32-bit, 64-bit:
+    // ///   - `LO <- (GPR[rs] < 0 ? 1 : -1)`
+    // ///   - `HI <- sign_extend_u64::<32>(GPR[rs])`
+    // /// ## Exceptions:
+    // /// - TLB miss exception (Not tested here)
+    // /// - TLB invalid exception (Not tested here)
+    // /// - Bus error exception
+    // /// - Address error exception
+    // #[test]
+    // fn test_lb()
+}
 
 mod branch_instructions {}
 
