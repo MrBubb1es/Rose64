@@ -235,15 +235,26 @@ impl CpuVR4300 {
 
                     self.gpr[instr.rd as usize] = (((rt as i64) >> shift) as i32) as u64;
                 }
-                8 => {}                                  // JR
-                9 => {}                                  // JALR
-                12 => {}                                 // SYSCALL
-                13 => {}                                 // BREAK
-                15 => { /* Does nothing in N64, NOP */ } // SYNC
-                16 => {}                                 // MFHI
-                17 => {}                                 // MTHI
-                18 => {}                                 // MFLO
-                19 => {}                                 // MTLO
+                8 => {
+                    // JR
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    self.exec_state = ExecutionState::Delay(rs);
+                }
+                9 => {
+                    // JALR
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    self.gpr[instr.rd as usize] = self.pc.wrapping_add(8);
+                    self.exec_state = ExecutionState::Delay(rs);
+                }
+                12 => {} // SYSCALL
+                13 => {} // BRK
+                15 => {} // SYNC
+                16 => {} // MFHI
+                17 => {} // MTHI
+                18 => {} // MFLO
+                19 => {} // MTLO
                 20 => {
                     // DSLLV
                     if self.reg_size == RegSize::Reg32 {
@@ -722,8 +733,23 @@ impl CpuVR4300 {
                     _ => {}
                 }
             }
-            2 => {} // J
-            3 => {} // JAL
+            2 => {
+                // J
+                let addr_hi = self.pc & 0xFFFFFFFF_F0000000;
+                let instr = JTypeInstruction::from_raw(i);
+                let target = instr.target << 2;
+                let new_addr = addr_hi | (target as u64);
+                self.exec_state = ExecutionState::Delay(new_addr);
+            }
+            3 => {
+                // JAL
+                let addr_hi = self.pc & 0xFFFFFFFF_F0000000;
+                let instr = JTypeInstruction::from_raw(i);
+                let target = instr.target << 2;
+                let new_addr = addr_hi | (target as u64);
+                self.gpr[Self::LR] = self.pc.wrapping_add(8);
+                self.exec_state = ExecutionState::Delay(new_addr);
+            }
             4 => {
                 // BEQ
                 if rose_likely(self.exec_state == ExecutionState::Normal) {
