@@ -1,9 +1,8 @@
-// fmt strs:
-//  - rd (R), rs (R/I), rt (R/I): registers
-//  - sa (R): decimal shift amount
-//  - tgt (R/I): target address (swappable with raw data offset)
-//  - ofs (I): decimal offset
-//  - imm (I): hexadecimal data
+//! -----------------------------------------------------------------------
+//! disassembler.rs: A basic instruction disassembler for the VR4300
+//!
+//! Author(s): MrBubblezsz
+//! -----------------------------------------------------------------------
 
 use crate::processors::vr4300::{ITypeInstruction, JTypeInstruction, RTypeInstruction};
 
@@ -16,7 +15,7 @@ enum FormatPart {
     // Shown as offset(base)
     Sa,        // Decimal shift amount
     Target,    // Target address
-    Immediate, // Hexadecimal immediate data
+    Immediate { signed: bool }, // immediate data
     CoFunc,    // Coprocessor function
 }
 
@@ -29,10 +28,10 @@ impl FormatPart {
             // Shift amount: up to 2 digits
             FormatPart::Sa => 2,
             // 16-bit hex immediate: "0x" + 4 digits = 6
-            FormatPart::Immediate => 6,
-            // These typically appear last or have variable width
-            FormatPart::Target => 0,     // Don't pad targets
-            FormatPart::OffsetBase => 0, // Don't pad offset(base)
+            FormatPart::Immediate { .. } => 6,
+            // These appear last
+            FormatPart::Target => 0,
+            FormatPart::OffsetBase => 0,
             FormatPart::CoFunc => 0,
         };
 
@@ -57,6 +56,7 @@ struct DisassemblerOptions {
     no_spaces: bool,
     arg_align: bool,
     mnemonic_pad_wide: bool,
+    show_imm_as_hex: bool,
 }
 
 #[derive(Default)]
@@ -135,12 +135,12 @@ impl Disassembler {
                     1 => InstructionFormat::IType("BGEZ", &[Rs, Target]),
                     2 => InstructionFormat::IType("BLTZL", &[Rs, Target]),
                     3 => InstructionFormat::IType("BGEZL", &[Rs, Target]),
-                    8 => InstructionFormat::IType("TGEI", &[Rs, Immediate]),
-                    9 => InstructionFormat::IType("TGEIU", &[Rs, Immediate]),
-                    10 => InstructionFormat::IType("TLTI", &[Rs, Immediate]),
-                    11 => InstructionFormat::IType("TLTIU", &[Rs, Immediate]),
-                    12 => InstructionFormat::IType("TEQI", &[Rs, Immediate]),
-                    14 => InstructionFormat::IType("TNEI", &[Rs, Immediate]),
+                    8 => InstructionFormat::IType("TGEI", &[Rs, Immediate { signed: true }]),
+                    9 => InstructionFormat::IType("TGEIU", &[Rs, Immediate { signed: false }]),
+                    10 => InstructionFormat::IType("TLTI", &[Rs, Immediate { signed: true }]),
+                    11 => InstructionFormat::IType("TLTIU", &[Rs, Immediate { signed: false }]),
+                    12 => InstructionFormat::IType("TEQI", &[Rs, Immediate { signed: true }]),
+                    14 => InstructionFormat::IType("TNEI", &[Rs, Immediate { signed: true }]),
                     16 => InstructionFormat::IType("BLTZAL", &[Rs, Target]),
                     17 => InstructionFormat::IType("BGEZAL", &[Rs, Target]),
                     18 => InstructionFormat::IType("BLTZALL", &[Rs, Target]),
@@ -154,14 +154,14 @@ impl Disassembler {
             5 => InstructionFormat::IType("BNE", &[Rs, Rt, Target]),
             6 => InstructionFormat::IType("BLEZ", &[Rs, Target]),
             7 => InstructionFormat::IType("BGTZ", &[Rs, Target]),
-            8 => InstructionFormat::IType("ADDI", &[Rt, Rs, Immediate]),
-            9 => InstructionFormat::IType("ADDIU", &[Rt, Rs, Immediate]),
-            10 => InstructionFormat::IType("SLTI", &[Rt, Rs, Immediate]),
-            11 => InstructionFormat::IType("SLTIU", &[Rt, Rs, Immediate]),
-            12 => InstructionFormat::IType("ANDI", &[Rt, Rs, Immediate]),
-            13 => InstructionFormat::IType("ORI", &[Rt, Rs, Immediate]),
-            14 => InstructionFormat::IType("XORI", &[Rt, Rs, Immediate]),
-            15 => InstructionFormat::IType("LUI", &[Rt, Immediate]),
+            8 => InstructionFormat::IType("ADDI", &[Rt, Rs, Immediate { signed: true }]),
+            9 => InstructionFormat::IType("ADDIU", &[Rt, Rs, Immediate { signed: false }]),
+            10 => InstructionFormat::IType("SLTI", &[Rt, Rs, Immediate { signed: true }]),
+            11 => InstructionFormat::IType("SLTIU", &[Rt, Rs, Immediate { signed: false }]),
+            12 => InstructionFormat::IType("ANDI", &[Rt, Rs, Immediate { signed: true }]),
+            13 => InstructionFormat::IType("ORI", &[Rt, Rs, Immediate { signed: true }]),
+            14 => InstructionFormat::IType("XORI", &[Rt, Rs, Immediate { signed: true }]),
+            15 => InstructionFormat::IType("LUI", &[Rt, Immediate { signed: true }]),
             16 => InstructionFormat::JType("COP0", &[CoFunc]),
             17 => InstructionFormat::JType("COP1", &[CoFunc]),
             18 => InstructionFormat::JType("COP2", &[CoFunc]),
@@ -169,8 +169,8 @@ impl Disassembler {
             21 => InstructionFormat::IType("BNEL", &[Rs, Rt, Target]),
             22 => InstructionFormat::IType("BLEZL", &[Rs, Rt, Target]),
             23 => InstructionFormat::IType("BGTZL", &[Rs, Rt, Target]),
-            24 => InstructionFormat::IType("DADDI", &[Rt, Rs, Immediate]),
-            25 => InstructionFormat::IType("DADDIU", &[Rt, Rs, Immediate]),
+            24 => InstructionFormat::IType("DADDI", &[Rt, Rs, Immediate { signed: true }]),
+            25 => InstructionFormat::IType("DADDIU", &[Rt, Rs, Immediate { signed: false }]),
             26 => InstructionFormat::IType("LDL", &[Rt, OffsetBase]),
             27 => InstructionFormat::IType("LDR", &[Rt, OffsetBase]),
             32 => InstructionFormat::IType("LB", &[Rt, OffsetBase]),
@@ -214,95 +214,81 @@ impl Disassembler {
             no_spaces: true,
             arg_align: true,
             mnemonic_pad_wide: false,
+            show_imm_as_hex: false,
         };
 
         const MAX_MNEMONIC_LEN: usize = 7; // BLTZALL
         const COMMON_MNEMONIC_LEN: usize = 5;
 
-        let separator = if options.no_spaces { "," } else { ", " };
         let mnemonic_pad_len = if options.mnemonic_pad_wide {
             MAX_MNEMONIC_LEN
         } else {
             COMMON_MNEMONIC_LEN
         };
-        // let reg_arg_width = 4 + separator.len();
+        
+        let format_mnemonic = |mnemonic: &str| {
+            let m_pad = mnemonic_pad_len.saturating_sub(mnemonic.len());
+            format!("{}{}", mnemonic, " ".repeat(1 + m_pad))
+        };
 
         match Disassembler::instr_fmt(i) {
             InstructionFormat::Const(mnumonic) => mnumonic.to_string(),
             InstructionFormat::IType(mnemonic, ifmt) => {
                 let instr = ITypeInstruction::from_raw(i);
-                let m_pad = mnemonic_pad_len.saturating_sub(mnemonic.len());
-                let mut result = mnemonic.to_string() + &" ".repeat(m_pad + 1);
-
-                for (i, &part) in ifmt.iter().enumerate() {
-                    let is_last = i + 1 == ifmt.len();
-                    let formatted = fmt_ipart(pc, &options, &instr, part);
-
-                    if is_last {
-                        result += &formatted;
-                    } else {
-                        let with_sep = format!("{}{}", formatted, separator);
-                        if options.arg_align {
-                            let width = part.aligned_width(separator.len());
-                            result += &format!("{:<width$}", with_sep);
-                        } else {
-                            result += &with_sep;
-                        }
-                    }
-                }
-
-                result
+                format_mnemonic(mnemonic)
+                    + &format_args(ifmt, &options, |part| {
+                        fmt_ipart(pc, &options, &instr, part)
+                    })
             }
+            
             InstructionFormat::RType(mnemonic, rfmt) => {
                 let instr = RTypeInstruction::from_raw(i);
-                let m_pad = mnemonic_pad_len.saturating_sub(mnemonic.len());
-                let mut result = mnemonic.to_string() + &" ".repeat(m_pad + 1);
-
-                for (i, &part) in rfmt.iter().enumerate() {
-                    let is_last = i + 1 == rfmt.len();
-                    let formatted = fmt_rpart(pc, &options, &instr, part);
-
-                    if is_last {
-                        result += &formatted;
-                    } else {
-                        let with_sep = format!("{}{}", formatted, separator);
-                        if options.arg_align {
-                            let width = part.aligned_width(separator.len());
-                            result += &format!("{:<width$}", with_sep);
-                        } else {
-                            result += &with_sep;
-                        }
-                    }
-                }
-
-                result
+                format_mnemonic(mnemonic)
+                    + &format_args(rfmt, &options, |part| {
+                        fmt_rpart(pc, &options, &instr, part)
+                    })
             }
+            
             InstructionFormat::JType(mnemonic, jfmt) => {
                 let instr = JTypeInstruction::from_raw(i);
-                let m_pad = mnemonic_pad_len.saturating_sub(mnemonic.len());
-                let mut result = mnemonic.to_string() + &" ".repeat(m_pad + 1);
-
-                for (i, &part) in jfmt.iter().enumerate() {
-                    let is_last = i + 1 == jfmt.len();
-                    let formatted = fmt_jpart(pc, &options, &instr, part);
-
-                    if is_last {
-                        result += &formatted;
-                    } else {
-                        let with_sep = format!("{}{}", formatted, separator);
-                        if options.arg_align {
-                            let width = part.aligned_width(separator.len());
-                            result += &format!("{:<width$}", with_sep);
-                        } else {
-                            result += &with_sep;
-                        }
-                    }
-                }
-
-                result
+                format_mnemonic(mnemonic)
+                    + &format_args(jfmt, &options, |part| {
+                        fmt_jpart(pc, &options, &instr, part)
+                    })
             }
         }
     }
+}
+
+fn format_args<F>(
+    parts: &[FormatPart],
+    options: &DisassemblerOptions,
+    mut fmt_fn: F,
+) -> String
+where
+    F: FnMut(FormatPart) -> String,
+{
+    let separator = if options.no_spaces { "," } else { ", " };
+    let mut result = String::new();
+
+    for (i, &part) in parts.iter().enumerate() {
+        let is_last = i + 1 == parts.len();
+        let formatted = fmt_fn(part);
+
+        if is_last {
+            result += &formatted;
+        } else {
+            let with_sep = format!("{}{}", formatted, separator);
+            if options.arg_align {
+                let width = part.aligned_width(separator.len());
+                result += &format!("{:<width$}", with_sep);
+            } else {
+                result += &with_sep;
+            }
+        }
+    }
+
+    result
 }
 
 fn fmt_ipart(
@@ -314,7 +300,15 @@ fn fmt_ipart(
     match part {
         FormatPart::Rt => format!("$r{}", instr.rt),
         FormatPart::Rs => format!("$r{}", instr.rs),
-        FormatPart::Immediate => format!("0x{:04X}", instr.imm),
+        FormatPart::Immediate { signed } => if options.show_imm_as_hex {
+            format!("0x{:04X}", instr.imm)
+        } else {
+            if signed {
+                format!("{}", instr.imm as i16)
+            } else {
+                format!("{}", instr.imm)
+            }
+        },
         FormatPart::OffsetBase => format!("{}(${})", instr.imm as i16, instr.rs),
         FormatPart::Target => {
             if options.show_target_addresses {
