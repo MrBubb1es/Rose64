@@ -8,7 +8,9 @@
 //! -----------------------------------------------------------------------
 
 use crate::{
-    common::hint::{rose_likely, rose_unlikely}, memory::bus::{Bus, MemoryAccess}, processors::vr4300::cp0::Cp0,
+    common::hint::{rose_likely, rose_unlikely},
+    memory::bus::{Bus, MemoryAccess},
+    processors::vr4300::cp0::Cp0,
 };
 
 /// Representation of the N64's VR4300 processor.
@@ -172,7 +174,7 @@ impl CpuVR4300 {
         CpuVR4300::default()
     }
 
-    pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) -> Option<CpuException> {
+    pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) -> Result<(), CpuException> {
         let opcode = i >> 26;
 
         match opcode {
@@ -231,19 +233,19 @@ impl CpuVR4300 {
 
                     self.gpr[instr.rd as usize] = (((rt as i64) >> shift) as i32) as u64;
                 }
-                8 => {}  // JR
-                9 => {}  // JALR
-                12 => {} // SYSCALL
-                13 => {} // BREAK
+                8 => {}                                  // JR
+                9 => {}                                  // JALR
+                12 => {}                                 // SYSCALL
+                13 => {}                                 // BREAK
                 15 => { /* Does nothing in N64, NOP */ } // SYNC
-                16 => {} // MFHI
-                17 => {} // MTHI
-                18 => {} // MFLO
-                19 => {} // MTLO
+                16 => {}                                 // MFHI
+                17 => {}                                 // MTHI
+                18 => {}                                 // MFLO
+                19 => {}                                 // MTLO
                 20 => {
                     // DSLLV
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -255,7 +257,7 @@ impl CpuVR4300 {
                 22 => {
                     // DSRLV
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -267,7 +269,7 @@ impl CpuVR4300 {
                 23 => {
                     // DSRAV
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -320,7 +322,7 @@ impl CpuVR4300 {
                 28 => {
                     // DMULT
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -333,7 +335,7 @@ impl CpuVR4300 {
                 29 => {
                     // DMULTU
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -374,7 +376,7 @@ impl CpuVR4300 {
                     let (sum, overflow) = rs.overflowing_add(rt);
 
                     if overflow {
-                        return Some(CpuException::ArithmeticOverflow);
+                        return Err(CpuException::ArithmeticOverflow);
                     }
 
                     self.gpr[instr.rd as usize] = sum as u64;
@@ -398,7 +400,7 @@ impl CpuVR4300 {
                     let (diff, overflow) = rs.overflowing_sub(rt);
 
                     if overflow {
-                        return Some(CpuException::ArithmeticOverflow);
+                        return Err(CpuException::ArithmeticOverflow);
                     }
 
                     self.gpr[instr.rd as usize] = diff as u64;
@@ -458,7 +460,7 @@ impl CpuVR4300 {
                 44 => {
                     // DADD
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -469,7 +471,7 @@ impl CpuVR4300 {
                     let (result, overflow) = rs.overflowing_add(rt);
 
                     if overflow {
-                        return Some(CpuException::ArithmeticOverflow);
+                        return Err(CpuException::ArithmeticOverflow);
                     }
 
                     self.gpr[instr.rd as usize] = result as u64;
@@ -477,7 +479,7 @@ impl CpuVR4300 {
                 45 => {
                     // DADDU
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -492,7 +494,7 @@ impl CpuVR4300 {
                 46 => {
                     // DSUB
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -503,7 +505,7 @@ impl CpuVR4300 {
                     let (result, overflow) = rs.overflowing_sub(rt);
 
                     if overflow {
-                        return Some(CpuException::ArithmeticOverflow);
+                        return Err(CpuException::ArithmeticOverflow);
                     }
 
                     self.gpr[instr.rd as usize] = result as u64;
@@ -511,7 +513,7 @@ impl CpuVR4300 {
                 47 => {
                     // DSUBU
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -532,7 +534,7 @@ impl CpuVR4300 {
                 56 => {
                     // DSLL
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -543,7 +545,7 @@ impl CpuVR4300 {
                 58 => {
                     // DSRL
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -554,7 +556,7 @@ impl CpuVR4300 {
                 59 => {
                     // DSRA
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -566,7 +568,7 @@ impl CpuVR4300 {
                 60 => {
                     // DSLL32
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -577,7 +579,7 @@ impl CpuVR4300 {
                 62 => {
                     // DSRL32
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -588,7 +590,7 @@ impl CpuVR4300 {
                 63 => {
                     // DSRA32
                     if self.reg_size == RegSize::Reg32 {
-                        return Some(CpuException::ReservedInstruction);
+                        return Err(CpuException::ReservedInstruction);
                     }
 
                     let instr = RTypeInstruction::from_raw(i);
@@ -665,7 +667,7 @@ impl CpuVR4300 {
                             let offset = ((instr.imm as i16) as u64) << 2;
                             // Set link register to predicted addr
                             self.gpr[31] = self.pc + 4;
-                            
+
                             if rs < 0 {
                                 let addr = self.pc.wrapping_add(offset);
                                 self.exec_state = ExecutionState::Branch(addr);
@@ -680,7 +682,7 @@ impl CpuVR4300 {
                             let offset = ((instr.imm as i16) as u64) << 2;
                             // Set link register to predicted addr
                             self.gpr[31] = self.pc + 4;
-                            
+
                             if rs >= 0 {
                                 let addr = self.pc.wrapping_add(offset);
                                 self.exec_state = ExecutionState::Branch(addr);
@@ -696,7 +698,7 @@ impl CpuVR4300 {
                             // Set link register to predicted instruction addr
                             let branch_addr = self.pc.wrapping_add(offset);
                             self.gpr[31] = branch_addr;
-                            
+
                             if rs < 0 {
                                 self.pc = branch_addr.wrapping_sub(4);
                             }
@@ -710,7 +712,7 @@ impl CpuVR4300 {
                         // Set link register to predicted instruction addr
                         let branch_addr = self.pc.wrapping_add(offset);
                         self.gpr[31] = branch_addr;
-                        
+
                         if rs >= 0 {
                             self.pc = branch_addr.wrapping_sub(4);
                         }
@@ -779,7 +781,7 @@ impl CpuVR4300 {
                 let (sum, overflow) = rs.overflowing_add(immediate);
 
                 if overflow {
-                    return Some(CpuException::ArithmeticOverflow);
+                    return Err(CpuException::ArithmeticOverflow);
                 }
 
                 self.gpr[instr.rt as usize] = sum as u64;
@@ -888,7 +890,7 @@ impl CpuVR4300 {
             24 => {
                 // DADDI
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
@@ -897,7 +899,7 @@ impl CpuVR4300 {
                 let (result, overflow) = rs.overflowing_add(immediate);
 
                 if overflow {
-                    return Some(CpuException::ArithmeticOverflow);
+                    return Err(CpuException::ArithmeticOverflow);
                 }
 
                 self.gpr[instr.rt as usize] = result as u64;
@@ -905,7 +907,7 @@ impl CpuVR4300 {
             25 => {
                 // DADDIU
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
@@ -917,122 +919,72 @@ impl CpuVR4300 {
             26 => {
                 // LDL
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
+                let rt = self.gpr[instr.rt as usize];
+                let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = rs + offset;
                 let vaddr_aligned = vaddr & !7;
+                let value = self.read64(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 7;
-                let value = match self.read64(bus, vaddr_aligned) {
-                    Ok(data) => data,
-                    Err(e) => return Some(e),
-                };
-
-                // let result = match byte_offset {
-                //     0 => 0x00000000_00000000 | (value >> 0),
-                //     1 => 0xFF000000_00000000 | (value >> 8),
-                //     2 => 0xFFFF0000_00000000 | (value >> 16),
-                //     3 => 0xFFFFFF00_00000000 | (value >> 24),
-                //     4 => 0xFFFFFFFF_00000000 | (value >> 32),
-                //     5 => 0xFFFFFFFF_FF000000 | (value >> 40),
-                //     6 => 0xFFFFFFFF_FFFF0000 | (value >> 48),
-                //     7 => 0xFFFFFFFF_FFFFFF00 | (value >> 56),
-                //     _ => unreachable!()
-                // };
-
-                // Same result as match but no branching
-                let temp = 8 * (byte_offset + 1);
-                let mask = 0xFFFFFFFF_FFFFFFFFu64.checked_shr(temp as u32).unwrap_or(0);
-                let shift = 64 - temp;
-                self.gpr[instr.rt as usize] =
-                    (self.gpr[instr.rt as usize] & mask) | (value << shift);
+                let shift = 8 * byte_offset as u32;
+                let mask = u64::MAX.checked_shr(64 - shift).unwrap_or(0);
+                let result = (value << shift) | (rt & mask);
+                self.gpr[instr.rt as usize] = result;
             }
             27 => {
                 // LDR
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
+                let rt = self.gpr[instr.rt as usize];
+                let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = rs + offset;
                 let vaddr_aligned = vaddr & !7;
+                let value = self.read64(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 7;
-                let value = match self.read64(bus, vaddr_aligned) {
-                    Ok(data) => data,
-                    Err(e) => return Some(e),
-                };
-
-                // let result = match byte_offset {
-                //     0 => 0x00FFFFFF_FFFFFFFF | (value << 56),
-                //     1 => 0x0000FFFF_FFFFFFFF | (value << 48),
-                //     2 => 0x000000FF_FFFFFFFF | (value << 40),
-                //     3 => 0x00000000_FFFFFFFF | (value << 32),
-                //     4 => 0x00000000_00FFFFFF | (value << 24),
-                //     5 => 0x00000000_0000FFFF | (value << 16),
-                //     6 => 0x00000000_000000FF | (value << 8),
-                //     7 => 0x00000000_00000000 | (value << 0),
-                //     _ => unreachable!()
-                // };
-
-                // Same result as match but no branching
-                let temp = 8 * byte_offset;
-                let mask = 0xFFFFFFFF_FFFFFFFFu64
-                    .checked_shr(64 - temp as u32)
-                    .unwrap_or(0);
-                let shift = temp;
-                self.gpr[instr.rt as usize] =
-                    (self.gpr[instr.rt as usize] & mask) | (value >> shift);
+                let shift = 8 * (7 - byte_offset as u32);
+                let mask = u64::MAX.checked_shl(64 - shift).unwrap_or(0);
+                let result = (rt & mask) | (value >> shift);
+                self.gpr[instr.rt as usize] = result;
             }
             32 => {
                 // LB
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
+                let value = self.read8(bus, vaddr)?;
 
-                match self.read8(bus, vaddr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = (data as i8) as u64,
-                    Err(e) => return Some(e),
-                }
+                self.gpr[instr.rt as usize] = (value as i8) as u64;
             }
             33 => {
                 // LH
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                match self.read16(bus, vaddr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = (data as i16) as u64,
-                    Err(e) => return Some(e),
-                }
+                let value = self.read16(bus, vaddr)?;
+                
+                self.gpr[instr.rt as usize] = (value as i16) as u64;
             }
             34 => {
                 // LWL
                 let instr = ITypeInstruction::from_raw(i);
+                let rt = self.gpr[instr.rt as usize] as u32;
+                let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = rs + offset;
                 let vaddr_aligned = vaddr & !3;
+                let value = self.read32(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 3;
-                let value = match self.read32(bus, vaddr_aligned) {
-                    Ok(data) => data,
-                    Err(e) => return Some(e), // TODO: probably cold path
-                };
-
-                // let result = match byte_offset {
-                //     0 => 0x00FFFFFF | (value << 24),
-                //     1 => 0x0000FFFF | (value << 16),
-                //     2 => 0x000000FF | (value << 8),
-                //     3 => 0x00000000 | (value << 0),
-                //     _ => unreachable!()
-                // };
-
-                // Same result as match but no branching
-                let temp = 4 * (byte_offset + 1);
-                let mask = 0xFFFFFFFFu32.checked_shr(temp as u32).unwrap_or(0);
-                let shift = 32 - temp;
-                let reg_in = self.gpr[instr.rs as usize] as u32;
-                let result = (reg_in & mask) | (value << shift);
+                let shift = 8 * byte_offset as u32;
+                let mask = u32::MAX.checked_shr(32 - shift).unwrap_or(0);
+                let result = (value << shift) | (rt & mask);
                 self.gpr[instr.rt as usize] = (result as i32) as u64;
             }
             35 => {
@@ -1040,57 +992,41 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                match self.read32(bus, vaddr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = (data as i32) as u64,
-                    Err(e) => return Some(e),
-                }
+                let value = self.read32(bus, vaddr)?;
+                
+                self.gpr[instr.rt as usize] = (value as i32) as u64;
             }
             36 => {
                 // LBU
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                match self.read8(bus, vaddr) {
-                    Ok(value) => self.gpr[instr.rt as usize] = value as u64,
-                    Err(e) => return Some(e),
-                }
+                let value = self.read8(bus, vaddr)?;
+                
+                self.gpr[instr.rt as usize] = value as u64;
             }
             37 => {
                 // LHU
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                match self.read16(bus, vaddr) {
-                    Ok(value) => self.gpr[instr.rt as usize] = value as u64,
-                    Err(e) => return Some(e),
-                }
+                let value = self.read16(bus, vaddr)?;
+                
+                self.gpr[instr.rt as usize] = value as u64;
             }
             38 => {
                 // LWR
                 let instr = ITypeInstruction::from_raw(i);
+                let rt = self.gpr[instr.rt as usize] as u32;
+                let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = rs + offset;
                 let vaddr_aligned = vaddr & !3;
+                let value = self.read32(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 3;
-                let value = match self.read32(bus, vaddr_aligned) {
-                    Ok(v) => v,
-                    Err(e) => return Some(e),
-                };
-
-                // let result = match byte_offset {
-                //     0 => 0x00000000 | (value >> 0),
-                //     1 => 0xFF000000 | (value >> 8),
-                //     2 => 0xFFFF0000 | (value >> 16),
-                //     3 => 0xFFFFFF00 | (value >> 24),
-                //     _ => unreachable!()
-                // };
-
-                // Same result as match but no branching
-                let temp = 4 * byte_offset;
-                let mask = 0xFFFFFFFFu32.checked_shl(temp as u32).unwrap_or(0);
-                let shift = temp;
-                let reg_in = self.gpr[instr.rs as usize] as u32;
-                let result = (reg_in & mask) | (value >> shift);
+                let shift = 8 * (3 - byte_offset as u32);
+                let mask = u32::MAX.checked_shl(32 - shift).unwrap_or(0);
+                let result = (rt & mask) | (value >> shift);
                 self.gpr[instr.rt as usize] = (result as i32) as u64;
             }
             39 => {
@@ -1098,10 +1034,9 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                match self.read32(bus, vaddr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = data as u64,
-                    Err(e) => return Some(e),
-                }
+                let value = self.read32(bus, vaddr)?;
+                
+                self.gpr[instr.rt as usize] = value as u64;
             }
             40 => {
                 // SB
@@ -1132,7 +1067,7 @@ impl CpuVR4300 {
                         self.write32(bus, vaddr, value)?;
                     }
                     1 => {
-                        self.write8(bus, vaddr, (value >> 16) as u8)?;
+                        self.write8(bus, vaddr, (value >> 24) as u8)?;
                         self.write16(bus, vaddr + 1, (value >> 8) as u16)?;
                     }
                     2 => {
@@ -1155,7 +1090,7 @@ impl CpuVR4300 {
             44 => {
                 // SDL
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
@@ -1200,44 +1135,45 @@ impl CpuVR4300 {
             45 => {
                 // SDR
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
                 let value = self.gpr[instr.rt as usize];
+                let vaddr_aligned = vaddr & !7;
                 let byte_offset = vaddr & 7;
 
                 match byte_offset {
                     0 => {
-                        self.write64(bus, vaddr, value)?;
+                        self.write8(bus, vaddr_aligned, value as u8)?;
                     }
                     1 => {
-                        self.write8(bus, vaddr, (value >> 48) as u8)?;
-                        self.write16(bus, vaddr + 1, (value >> 32) as u16)?;
-                        self.write32(bus, vaddr + 3, value as u32)?;
+                        self.write16(bus, vaddr_aligned, value as u16)?;
                     }
                     2 => {
-                        self.write16(bus, vaddr, (value >> 40) as u16)?;
-                        self.write32(bus, vaddr + 2, value as u32)?;
+                        self.write16(bus, vaddr_aligned, (value >> 8) as u16)?;
+                        self.write8(bus, vaddr_aligned + 2, value as u8)?;
                     }
                     3 => {
-                        self.write8(bus, vaddr, (value >> 32) as u8)?;
-                        self.write32(bus, vaddr + 1, value as u32)?;
+                        self.write32(bus, vaddr_aligned, value as u32)?;
                     }
                     4 => {
-                        self.write32(bus, vaddr, (value >> 32) as u32)?;
+                        self.write32(bus, vaddr_aligned, (value >> 8) as u32)?;
+                        self.write8(bus, vaddr_aligned + 4, value as u8)?;
                     }
                     5 => {
-                        self.write8(bus, vaddr, (value >> 16) as u8)?;
-                        self.write16(bus, vaddr + 1, value as u16)?;
+                        self.write32(bus, vaddr_aligned, (value >> 16) as u32)?;
+                        self.write16(bus, vaddr_aligned + 4, value as u16)?;
                     }
                     6 => {
-                        self.write16(bus, vaddr, value as u16)?;
+                        self.write32(bus, vaddr_aligned, (value >> 24) as u32)?;
+                        self.write16(bus, vaddr_aligned + 4, (value >> 8) as u16)?;
+                        self.write8(bus, vaddr_aligned + 6, value as u8)?;
                     }
                     7 => {
-                        self.write8(bus, vaddr, value as u8)?;
+                        self.write64(bus, vaddr_aligned, value)?;
                     }
                     _ => unreachable!(),
                 }
@@ -1247,22 +1183,23 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr_aligned = vaddr & !3;
                 let value = self.gpr[instr.rt as usize] as u32;
                 let byte_offset = vaddr & 3;
 
                 match byte_offset {
                     0 => {
-                        self.write32(bus, vaddr, value)?;
+                        self.write8(bus, vaddr_aligned, value as u8)?;
                     }
                     1 => {
-                        self.write8(bus, vaddr, (value >> 8) as u8)?;
-                        self.write16(bus, vaddr + 1, value as u16)?;
+                        self.write16(bus, vaddr_aligned, value as u16)?;
                     }
                     2 => {
-                        self.write16(bus, vaddr, value as u16)?;
+                        self.write16(bus, vaddr_aligned, (value >> 8) as u16)?;
+                        self.write8(bus, vaddr_aligned + 2, value as u8)?;
                     }
                     3 => {
-                        self.write8(bus, vaddr, value as u8)?;
+                        self.write32(bus, vaddr_aligned, value)?;
                     }
                     _ => unreachable!(),
                 }
@@ -1273,14 +1210,8 @@ impl CpuVR4300 {
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                let paddr = match self.translate_vaddr(vaddr as u32) {
-                    Ok(pa) => pa,
-                    Err(e) => return Some(e),
-                };
-                let value = match self.pread32(bus, paddr) {
-                    Ok(v) => v,
-                    Err(e) => return Some(e),
-                };
+                let paddr = self.translate_vaddr(vaddr as u32)?;
+                let value = self.pread32(bus, paddr)?;
                 self.gpr[instr.rt as usize] = (value as i32) as u64;
                 self.cp0.lladdr = paddr;
                 self.llbit = true;
@@ -1290,20 +1221,14 @@ impl CpuVR4300 {
             52 => {
                 // LLD
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                let paddr = match self.translate_vaddr(vaddr as u32) {
-                    Ok(pa) => pa,
-                    Err(e) => return Some(e),
-                };
-                let value = match self.pread64(bus, paddr) {
-                    Ok(v) => v,
-                    Err(e) => return Some(e),
-                };
+                let paddr = self.translate_vaddr(vaddr as u32)?;
+                let value = self.pread64(bus, paddr)?;
                 self.gpr[instr.rt as usize] = value;
                 self.cp0.lladdr = paddr;
                 self.llbit = true;
@@ -1313,16 +1238,15 @@ impl CpuVR4300 {
             55 => {
                 // LD
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
-                match self.read64(bus, vaddr) {
-                    Ok(data) => self.gpr[instr.rt as usize] = data,
-                    Err(e) => return Some(e),
-                }
+                let value = self.read64(bus, vaddr)?;
+                
+                self.gpr[instr.rt as usize] = value;
             }
             56 => {
                 // SC
@@ -1342,7 +1266,7 @@ impl CpuVR4300 {
             60 => {
                 // SCD
                 if self.reg_size == RegSize::Reg32 {
-                    return Some(CpuException::ReservedInstruction);
+                    return Err(CpuException::ReservedInstruction);
                 }
 
                 let instr = ITypeInstruction::from_raw(i);
@@ -1360,6 +1284,10 @@ impl CpuVR4300 {
             62 => {} // SDC2
             63 => {
                 // SD
+                if self.reg_size == RegSize::Reg32 {
+                    return Err(CpuException::ReservedInstruction);
+                }
+
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
                 let vaddr = self.gpr[instr.rs as usize] + offset;
@@ -1372,7 +1300,7 @@ impl CpuVR4300 {
         self.gpr[Self::ZR] = 0; // TODO: Move this to execute_instruction caller
 
         match self.exec_state {
-            ExecutionState::Normal => {},
+            ExecutionState::Normal => {}
             ExecutionState::Branch(addr) => {
                 // Just did a branch instruction, next instruction is delay slot
                 self.exec_state = ExecutionState::Delay(addr);
@@ -1383,7 +1311,7 @@ impl CpuVR4300 {
             }
         }
 
-        None
+        Ok(())
     }
 
     #[inline]
@@ -1498,7 +1426,7 @@ impl CpuVR4300 {
         Ok(hi << 32 | lo)
     }
 
-    fn write8(&mut self, bus: &mut Bus, vaddr: u64, value: u8) -> Option<CpuException> {
+    fn write8(&mut self, bus: &mut Bus, vaddr: u64, value: u8) -> Result<(), CpuException> {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
@@ -1508,20 +1436,20 @@ impl CpuVR4300 {
             unsafe {
                 ptr.write_unaligned(value);
             }
-            return None;
+            return Ok(());
         }
 
         let paddr = match self.translate_vaddr(vaddr) {
             Ok(pa) => pa,
-            Err(e) => return Some(e),
+            Err(e) => return Err(e),
         };
 
         bus.write8(paddr, value);
 
-        None
+        Ok(())
     }
 
-    fn write16(&mut self, bus: &mut Bus, vaddr: u64, value: u16) -> Option<CpuException> {
+    fn write16(&mut self, bus: &mut Bus, vaddr: u64, value: u16) -> Result<(), CpuException> {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
@@ -1530,27 +1458,27 @@ impl CpuVR4300 {
 
         // Alignment check
         if rose_unlikely(vaddr & 1 != 0) {
-            return Some(CpuException::AddressErrorStore);
+            return Err(CpuException::AddressErrorStore);
         }
 
         if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 (ptr as *mut u16).write_unaligned(value);
             }
-            return None;
+            return Ok(());
         }
 
         let paddr = match self.translate_vaddr(vaddr) {
             Ok(pa) => pa,
-            Err(e) => return Some(e),
+            Err(e) => return Err(e),
         };
 
         bus.write16(paddr, value);
 
-        None
+        Ok(())
     }
 
-    fn write32(&mut self, bus: &mut Bus, vaddr: u64, value: u32) -> Option<CpuException> {
+    fn write32(&mut self, bus: &mut Bus, vaddr: u64, value: u32) -> Result<(), CpuException> {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
@@ -1559,27 +1487,27 @@ impl CpuVR4300 {
 
         // Alignment check
         if rose_unlikely(vaddr & 3 != 0) {
-            return Some(CpuException::AddressErrorStore);
+            return Err(CpuException::AddressErrorStore);
         }
 
         if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 (ptr as *mut u32).write_unaligned(value);
             }
-            return None;
+            return Ok(());
         }
 
         let paddr = match self.translate_vaddr(vaddr) {
             Ok(pa) => pa,
-            Err(e) => return Some(e),
+            Err(e) => return Err(e),
         };
 
         bus.write32(paddr, value);
 
-        None
+        Ok(())
     }
 
-    fn write64(&mut self, bus: &mut Bus, vaddr: u64, value: u64) -> Option<CpuException> {
+    fn write64(&mut self, bus: &mut Bus, vaddr: u64, value: u64) -> Result<(), CpuException> {
         // Expect ROMS to use 32-bit addressing always
         assert_eq!((vaddr as i32) as u64, vaddr);
 
@@ -1588,25 +1516,25 @@ impl CpuVR4300 {
 
         // Alignment check
         if rose_unlikely(vaddr & 7 != 0) {
-            return Some(CpuException::AddressErrorStore);
+            return Err(CpuException::AddressErrorStore);
         }
 
         if let Some(ptr) = bus.memory.get_raw_mem(vaddr) {
             unsafe {
                 (ptr as *mut u64).write_unaligned(value);
             }
-            return None;
+            return Ok(());
         }
 
         let paddr = match self.translate_vaddr(vaddr) {
             Ok(pa) => pa,
-            Err(e) => return Some(e),
+            Err(e) => return Err(e),
         };
 
         bus.write32(paddr, (value >> 32) as u32);
         bus.write32(paddr, value as u32);
 
-        None
+        Ok(())
     }
 
     pub fn get_last_exception(&mut self) -> Option<CpuException> {
@@ -1657,17 +1585,17 @@ mod tests {
 
         assert_eq!(cpu.read64(&mut bus, RDRAM_BASE), Ok(0x18192021_78798081));
 
-        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE, 0x00), None);
-        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 1, 0x00), None);
-        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 2, 0x00), None);
-        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 3, 0x00), None);
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE, 0x00), Ok(()));
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 1, 0x00), Ok(()));
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 2, 0x00), Ok(()));
+        assert_eq!(cpu.write8(&mut bus, RDRAM_BASE + 3, 0x00), Ok(()));
 
-        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE, 0x00), None);
-        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 2, 0x00), None);
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE, 0x00), Ok(()));
+        assert_eq!(cpu.write16(&mut bus, RDRAM_BASE + 2, 0x00), Ok(()));
 
-        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE, 0x00), None);
+        assert_eq!(cpu.write32(&mut bus, RDRAM_BASE, 0x00), Ok(()));
 
-        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE, 0x00), None);
+        assert_eq!(cpu.write64(&mut bus, RDRAM_BASE, 0x00), Ok(()));
 
         // Unhappy paths, should throw AddressErrorLoad/Store
         assert_eq!(
@@ -1723,53 +1651,53 @@ mod tests {
 
         assert_eq!(
             cpu.write16(&mut bus, RDRAM_BASE + 1, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write16(&mut bus, RDRAM_BASE + 3, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
 
         assert_eq!(
             cpu.write32(&mut bus, RDRAM_BASE + 1, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write32(&mut bus, RDRAM_BASE + 2, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write32(&mut bus, RDRAM_BASE + 3, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
 
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 1, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 2, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 3, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 4, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 5, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 6, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
         assert_eq!(
             cpu.write64(&mut bus, RDRAM_BASE + 7, 0x01),
-            Some(CpuException::AddressErrorStore)
+            Err(CpuException::AddressErrorStore)
         );
 
         // Writes that throw exceptions should not go through

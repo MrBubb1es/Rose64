@@ -221,7 +221,7 @@ mod util {
         cpu.reg_size = reg_size;
         cpu.gpr[rs as usize] = rs_in;
         cpu.gpr[rt as usize] = rt_in;
-        let exception = cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr).err();
 
         let rt_out = cpu.gpr[rt as usize];
 
@@ -331,7 +331,7 @@ mod util {
         cpu.gpr[rs as usize] = rs_in;
         cpu.gpr[rt as usize] = rt_in;
         cpu.gpr[rd as usize] = rd_in;
-        let exception = cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr).err();
 
         let rd_out = cpu.gpr[rd as usize];
 
@@ -412,7 +412,7 @@ mod util {
         cpu.gpr[rt as usize] = rt_in;
         cpu.mult_hi = hi_in;
         cpu.mult_lo = hi_in;
-        let exception = cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr).err();
 
         assert_eq!(
             exception,
@@ -560,7 +560,7 @@ mod util {
         cpu.reg_size = reg_size;
         cpu.gpr[rs as usize] = base;
         cpu.gpr[rt as usize] = rt_in;
-        let exception = cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr).err();
 
         let rt_out = cpu.gpr[rt as usize];
 
@@ -672,7 +672,7 @@ mod util {
         cpu.gpr[rs as usize] = base;
         cpu.gpr[rt as usize] = rt_in;
         cpu.llbit = false;
-        let exception = cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr).err();
 
         let rt_out = cpu.gpr[rt as usize];
 
@@ -789,7 +789,7 @@ mod util {
         cpu.reg_size = reg_size;
         cpu.gpr[rs as usize] = base;
         cpu.gpr[rt as usize] = rt_in;
-        let exception = cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr).err();
 
         let actual_mem = bus.memory.rdram.0[window..window + expected_mem.len()].to_vec();
 
@@ -3374,10 +3374,8 @@ mod load_store_instructions {
     /// # LWU:
     /// ## Type: I-Type
     /// ## Operation:
-    /// - 32-bit: Reserved Instruction Exception
-    /// - 64-bit: `GPR[rt] <- zero_extend_u64::<32>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// - `GPR[rt] <- Memory[GPR[rs] + sign_extend(imm)]`
     /// ## Exceptions:
-    /// - Reserved Instruction (32-bit mode)
     /// - AddressErrorLoad if the effective address is not 4-byte aligned
     #[test]
     fn test_lwu() {
@@ -3388,7 +3386,7 @@ mod load_store_instructions {
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
         test_load_instr(
-            "LWU",
+            "LW",
             OP,
             rs,
             rt,
@@ -3396,14 +3394,13 @@ mod load_store_instructions {
             0,
             rt_in,
             base,
-            &[0x81, 0x23, 0x45, 0x67],
-            rt_in,
-            Some(CpuException::ReservedInstruction),
-            Some(RegSize::Reg32),
+            &[0x12, 0x34, 0x56, 0x78],
+            0x00000000_12345678,
+            None,
+            None,
         );
-
         test_load_instr(
-            "LWU",
+            "LW",
             OP,
             rs,
             rt,
@@ -3414,12 +3411,12 @@ mod load_store_instructions {
             &[0x81, 0x23, 0x45, 0x67],
             0x00000000_81234567,
             None,
-            Some(RegSize::Reg64),
+            None,
         );
 
         for imm in 1..4u16 {
             test_load_instr(
-                "LWU",
+                "LW",
                 OP,
                 rs,
                 rt,
@@ -3430,7 +3427,7 @@ mod load_store_instructions {
                 &[0, 0, 0, 0],
                 rt_in,
                 Some(CpuException::AddressErrorLoad),
-                Some(RegSize::Reg64),
+                None,
             );
         }
     }
@@ -3657,7 +3654,7 @@ mod load_store_instructions {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let base = RDRAM_BASE + 0x100;
-        let word_bytes: [u8; 4] = [0x11, 0x22, 0x33, 0x44];
+        let word_bytes: [u8; 4] = [0x00, 0x11, 0x22, 0x33];
         let word = u32::from_be_bytes(word_bytes);
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
@@ -3742,7 +3739,7 @@ mod load_store_instructions {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let base = RDRAM_BASE + 0x100;
-        let dword_bytes: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+        let dword_bytes: [u8; 8] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77];
         let dword = u64::from_be_bytes(dword_bytes);
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
@@ -3799,7 +3796,7 @@ mod load_store_instructions {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let base = RDRAM_BASE + 0x100;
-        let dword_bytes: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+        let dword_bytes: [u8; 8] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77];
         let dword = u64::from_be_bytes(dword_bytes);
         let rt_in: u64 = 0xAAAAAAAA_BBBBBBBB;
 
@@ -4057,28 +4054,63 @@ mod load_store_instructions {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let base = RDRAM_BASE + 0x100;
-        let rt_in: u64 = 0xAAAAAAAA_11223344;
-        let old_word = u32::from_be_bytes([STORE_SENTINEL; 4]);
+        let rt_in: u64 = 0xFFFFFFFF_AABBCCDD;
 
-        for byte in 0..4u32 {
-            let shift = 8 * byte;
-            let inv_mask: u32 = 0xFFFFFFFFu32 >> shift;
-            let merged: u32 = (old_word & !inv_mask) | (((rt_in as u32) >> shift) & inv_mask);
+        test_store_instr(
+            "SWL",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0000,
+            rt_in,
+            base,
+            &0xAABBCCDDu32.to_be_bytes(),
+            None,
+            None,
+        );
 
-            test_store_instr(
-                "SWL",
-                OP,
-                rs,
-                rt,
-                base,
-                byte as u16,
-                rt_in,
-                base,
-                &merged.to_be_bytes(),
-                None,
-                None,
-            );
-        }
+        test_store_instr(
+            "SWL",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0001,
+            rt_in,
+            base,
+            &0xEEAABBCCu32.to_be_bytes(),
+            None,
+            None,
+        );
+
+        test_store_instr(
+            "SWL",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0002,
+            rt_in,
+            base,
+            &0xEEEEAABBu32.to_be_bytes(),
+            None,
+            None,
+        );
+
+        test_store_instr(
+            "SWL",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0003,
+            rt_in,
+            base,
+            &0xEEEEEEAAu32.to_be_bytes(),
+            None,
+            None,
+        );
     }
 
     /// Test the SWR instruction.
@@ -4096,28 +4128,63 @@ mod load_store_instructions {
         let rs: u32 = 1;
         let rt: u32 = 2;
         let base = RDRAM_BASE + 0x100;
-        let rt_in: u64 = 0xAAAAAAAA_11223344;
-        let old_word = u32::from_be_bytes([STORE_SENTINEL; 4]);
+        let rt_in: u64 = 0xFFFFFFFF_AABBCCDD;
 
-        for byte in 0..4u32 {
-            let shift = 8 * (3 - byte);
-            let inv_mask: u32 = 0xFFFFFFFFu32 << shift;
-            let merged: u32 = (old_word & !inv_mask) | (((rt_in as u32) << shift) & inv_mask);
+        test_store_instr(
+            "SWR",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0000,
+            rt_in,
+            base,
+            &0xDDEEEEEEu32.to_be_bytes(),
+            None,
+            None,
+        );
 
-            test_store_instr(
-                "SWR",
-                OP,
-                rs,
-                rt,
-                base,
-                byte as u16,
-                rt_in,
-                base,
-                &merged.to_be_bytes(),
-                None,
-                None,
-            );
-        }
+        test_store_instr(
+            "SWR",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0001,
+            rt_in,
+            base,
+            &0xCCDDEEEEu32.to_be_bytes(),
+            None,
+            None,
+        );
+
+        test_store_instr(
+            "SWR",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0002,
+            rt_in,
+            base,
+            &0xBBCCDDEEu32.to_be_bytes(),
+            None,
+            None,
+        );
+
+        test_store_instr(
+            "SWR",
+            OP,
+            rs,
+            rt,
+            base,
+            0x0003,
+            rt_in,
+            base,
+            &0xAABBCCDDu32.to_be_bytes(),
+            None,
+            None,
+        );
     }
 
     /// Test the SDL instruction.
@@ -4137,7 +4204,7 @@ mod load_store_instructions {
         let rt: u32 = 2;
         let base = RDRAM_BASE + 0x100;
         let rt_in: u64 = 0x11223344_55667788;
-        let old_dword = u64::from_be_bytes([STORE_SENTINEL; 8]);
+        let mem_in: u64 = u64::from_be_bytes([STORE_SENTINEL; 8]);
 
         test_store_instr(
             "SDL",
@@ -4148,15 +4215,15 @@ mod load_store_instructions {
             0,
             rt_in,
             base,
-            &[STORE_SENTINEL; 8],
+            &mem_in.to_be_bytes(),
             Some(CpuException::ReservedInstruction),
             Some(RegSize::Reg32),
         );
 
-        for byte in 0..8u64 {
-            let shift = 8 * byte;
+        for i in 0..8u64 {
+            let shift = 8 * i;
             let inv_mask: u64 = u64::MAX >> shift;
-            let merged: u64 = (old_dword & !inv_mask) | ((rt_in >> shift) & inv_mask);
+            let expected = (mem_in & !inv_mask) | ((rt_in >> shift) & inv_mask);
 
             test_store_instr(
                 "SDL",
@@ -4164,10 +4231,10 @@ mod load_store_instructions {
                 rs,
                 rt,
                 base,
-                byte as u16,
+                i as u16,
                 rt_in,
                 base,
-                &merged.to_be_bytes(),
+                &expected.to_be_bytes(),
                 None,
                 Some(RegSize::Reg64),
             );
