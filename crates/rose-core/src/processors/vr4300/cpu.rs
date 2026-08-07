@@ -954,7 +954,7 @@ impl CpuVR4300 {
                 let rt = self.gpr[instr.rt as usize];
                 let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = rs + offset;
+                let vaddr = rs.wrapping_add(offset);
                 let vaddr_aligned = vaddr & !7;
                 let value = self.read64(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 7;
@@ -973,7 +973,7 @@ impl CpuVR4300 {
                 let rt = self.gpr[instr.rt as usize];
                 let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = rs + offset;
+                let vaddr = rs.wrapping_add(offset);
                 let vaddr_aligned = vaddr & !7;
                 let value = self.read64(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 7;
@@ -986,7 +986,7 @@ impl CpuVR4300 {
                 // LB
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read8(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = (value as i8) as u64;
@@ -995,7 +995,7 @@ impl CpuVR4300 {
                 // LH
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read16(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = (value as i16) as u64;
@@ -1006,7 +1006,7 @@ impl CpuVR4300 {
                 let rt = self.gpr[instr.rt as usize] as u32;
                 let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = rs + offset;
+                let vaddr = rs.wrapping_add(offset);
                 let vaddr_aligned = vaddr & !3;
                 let value = self.read32(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 3;
@@ -1019,7 +1019,7 @@ impl CpuVR4300 {
                 // LW
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read32(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = (value as i32) as u64;
@@ -1028,7 +1028,7 @@ impl CpuVR4300 {
                 // LBU
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read8(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = value as u64;
@@ -1037,7 +1037,7 @@ impl CpuVR4300 {
                 // LHU
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read16(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = value as u64;
@@ -1048,7 +1048,7 @@ impl CpuVR4300 {
                 let rt = self.gpr[instr.rt as usize] as u32;
                 let rs = self.gpr[instr.rs as usize];
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = rs + offset;
+                let vaddr = rs.wrapping_add(offset);
                 let vaddr_aligned = vaddr & !3;
                 let value = self.read32(bus, vaddr_aligned)?;
                 let byte_offset = vaddr & 3;
@@ -1061,7 +1061,7 @@ impl CpuVR4300 {
                 // LWU
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read32(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = value as u64;
@@ -1070,7 +1070,7 @@ impl CpuVR4300 {
                 // SB
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let data = self.gpr[instr.rt as usize] as u8;
                 self.write8(bus, vaddr, data)?;
             }
@@ -1078,7 +1078,7 @@ impl CpuVR4300 {
                 // SH
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let data = self.gpr[instr.rt as usize] as u16;
                 self.write16(bus, vaddr, data)?;
             }
@@ -1086,7 +1086,7 @@ impl CpuVR4300 {
                 // SWL
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.gpr[instr.rt as usize] as u32;
                 let byte_offset = vaddr & 3;
 
@@ -1111,7 +1111,7 @@ impl CpuVR4300 {
                 // SW
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let data = self.gpr[instr.rt as usize] as u32;
                 self.write32(bus, vaddr, data)?;
             }
@@ -1123,7 +1123,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.gpr[instr.rt as usize];
                 let byte_offset = vaddr & 7;
 
@@ -1168,7 +1168,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.gpr[instr.rt as usize];
                 let vaddr_aligned = vaddr & !7;
                 let byte_offset = vaddr & 7;
@@ -1210,7 +1210,7 @@ impl CpuVR4300 {
                 // SWR
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let vaddr_aligned = vaddr & !3;
                 let value = self.gpr[instr.rt as usize] as u32;
                 let byte_offset = vaddr & 3;
@@ -1237,7 +1237,7 @@ impl CpuVR4300 {
                 // LL
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let paddr = self.translate_vaddr(vaddr as u32)?;
                 let value = self.pread32(bus, paddr)?;
                 self.gpr[instr.rt as usize] = (value as i32) as u64;
@@ -1254,7 +1254,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let paddr = self.translate_vaddr(vaddr as u32)?;
                 let value = self.pread64(bus, paddr)?;
                 self.gpr[instr.rt as usize] = value;
@@ -1271,7 +1271,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.read64(bus, vaddr)?;
 
                 self.gpr[instr.rt as usize] = value;
@@ -1280,7 +1280,7 @@ impl CpuVR4300 {
                 // SC
                 let instr = ITypeInstruction::from_raw(i);
                 let value = self.gpr[instr.rt as usize] as u32;
-                let vaddr = self.gpr[instr.rs as usize] + (instr.imm as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add((instr.imm as i16) as u64);
                 self.gpr[instr.rt as usize] = 0;
 
                 if self.llbit {
@@ -1299,7 +1299,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let value = self.gpr[instr.rt as usize];
-                let vaddr = self.gpr[instr.rs as usize] + (instr.imm as i16) as u64;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add((instr.imm as i16) as u64);
                 self.gpr[instr.rt as usize] = 0;
 
                 if self.llbit {
@@ -1318,7 +1318,7 @@ impl CpuVR4300 {
 
                 let instr = ITypeInstruction::from_raw(i);
                 let offset = (instr.imm as i16) as u64;
-                let vaddr = self.gpr[instr.rs as usize] + offset;
+                let vaddr = self.gpr[instr.rs as usize].wrapping_add(offset);
                 let value = self.gpr[instr.rt as usize];
                 self.write64(bus, vaddr, value)?;
             }
