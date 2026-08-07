@@ -13,10 +13,10 @@ enum FormatPart {
     Rt,         // Registers
     OffsetBase, // Decimal offset AND rs register acting as base address.
     // Shown as offset(base)
-    Sa,        // Decimal shift amount
-    Target,    // Target address
+    Sa,                         // Decimal shift amount
+    Target,                     // Target address
     Immediate { signed: bool }, // immediate data
-    CoFunc,    // Coprocessor function
+    CoFunc,                     // Coprocessor function
 }
 
 impl FormatPart {
@@ -225,7 +225,7 @@ impl Disassembler {
         } else {
             COMMON_MNEMONIC_LEN
         };
-        
+
         let format_mnemonic = |mnemonic: &str| {
             let m_pad = mnemonic_pad_len.saturating_sub(mnemonic.len());
             format!("{}{}", mnemonic, " ".repeat(1 + m_pad))
@@ -236,35 +236,25 @@ impl Disassembler {
             InstructionFormat::IType(mnemonic, ifmt) => {
                 let instr = ITypeInstruction::from_raw(i);
                 format_mnemonic(mnemonic)
-                    + &format_args(ifmt, &options, |part| {
-                        fmt_ipart(pc, &options, &instr, part)
-                    })
+                    + &format_args(ifmt, &options, |part| fmt_ipart(pc, &options, &instr, part))
             }
-            
+
             InstructionFormat::RType(mnemonic, rfmt) => {
                 let instr = RTypeInstruction::from_raw(i);
                 format_mnemonic(mnemonic)
-                    + &format_args(rfmt, &options, |part| {
-                        fmt_rpart(pc, &options, &instr, part)
-                    })
+                    + &format_args(rfmt, &options, |part| fmt_rpart(pc, &options, &instr, part))
             }
-            
+
             InstructionFormat::JType(mnemonic, jfmt) => {
                 let instr = JTypeInstruction::from_raw(i);
                 format_mnemonic(mnemonic)
-                    + &format_args(jfmt, &options, |part| {
-                        fmt_jpart(pc, &options, &instr, part)
-                    })
+                    + &format_args(jfmt, &options, |part| fmt_jpart(pc, &options, &instr, part))
             }
         }
     }
 }
 
-fn format_args<F>(
-    parts: &[FormatPart],
-    options: &DisassemblerOptions,
-    mut fmt_fn: F,
-) -> String
+fn format_args<F>(parts: &[FormatPart], options: &DisassemblerOptions, mut fmt_fn: F) -> String
 where
     F: FnMut(FormatPart) -> String,
 {
@@ -300,25 +290,29 @@ fn fmt_ipart(
     match part {
         FormatPart::Rt => format!("$r{}", instr.rt),
         FormatPart::Rs => format!("$r{}", instr.rs),
-        FormatPart::Immediate { signed } => if options.show_imm_as_hex {
-            format!("0x{:04X}", instr.imm)
-        } else {
-            if signed {
-                format!("{}", instr.imm as i16)
+        FormatPart::Immediate { signed } => {
+            if options.show_imm_as_hex {
+                format!("0x{:04X}", instr.imm)
             } else {
-                format!("{}", instr.imm)
+                if signed {
+                    format!("{}", instr.imm as i16)
+                } else {
+                    format!("{}", instr.imm)
+                }
             }
-        },
+        }
         FormatPart::OffsetBase => format!("{}(${})", instr.imm as i16, instr.rs),
         FormatPart::Target => {
             if options.show_target_addresses {
                 if options.show_addresses_32_bit {
                     let tgt = (pc as u32)
-                        .wrapping_add((instr.imm as i16) as u32)
+                        .wrapping_add(((instr.imm as i16) as u32) << 2)
                         .wrapping_add(4);
                     format!("tgt_{:08X}", tgt)
                 } else {
-                    let tgt = pc.wrapping_add((instr.imm as i16) as u64).wrapping_add(4);
+                    let tgt = pc
+                        .wrapping_add(((instr.imm as i16) as u64) << 2)
+                        .wrapping_add(4);
                     format!("tgt_{:016X}", tgt)
                 }
             } else {

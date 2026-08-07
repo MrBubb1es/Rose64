@@ -12,7 +12,7 @@
 
 use crate::common::consts::MB;
 use crate::memory::bus::{Bus, MemoryAccess};
-use crate::processors::vr4300::CpuVR4300;
+use crate::processors::vr4300::{CpuVR4300, RegSize};
 use crate::processors::vr4300::disassembler::Disassembler;
 
 const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-roms/vr4300-thar0/");
@@ -142,6 +142,7 @@ fn run_bin_test(test_file: &str) {
 
     cpu.gpr[CpuVR4300::LR] = MAGIC_RETURN_ADDRESS;
     cpu.pc = (code_start as i32) as u64;
+    cpu.reg_size = RegSize::Reg64;
 
     let is_jr_instr = |instr: u32| (instr >> 26) == 0 && (instr & 0x3F) == 0b001000;
 
@@ -150,8 +151,6 @@ fn run_bin_test(test_file: &str) {
         let instr = bus.read32(translate_vaddr_simple(cpu.pc as u32));
         
         println!("0x{:08X}: {}", cpu.pc as u32, Disassembler::instruction_string(cpu.pc, instr));
-        
-        cpu.pc += 4;
 
         if is_jr_instr(instr) {
             let rs = (instr >> 21) & 0x1F;
@@ -161,7 +160,7 @@ fn run_bin_test(test_file: &str) {
             }
         }
 
-        cpu.execute_instruction(&mut bus, instr);
+        cpu.execute_instruction(&mut bus, instr).unwrap();
         instruction_count += 1;
     }
 
