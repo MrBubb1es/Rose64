@@ -104,7 +104,7 @@ fn read_bin_test(data: &[u8]) -> BinTest {
 }
 
 fn run_bin_test(test_file: &str) {
-    const MAX_INSTRUCTIONS: usize = 100;
+    const MAX_INSTRUCTIONS: usize = 100_000_000;
     const MAGIC_RETURN_ADDRESS: u64 = 0x00000000_DEAD0123;
 
     let test_path = format!("{TEST_DIR}{test_file}");

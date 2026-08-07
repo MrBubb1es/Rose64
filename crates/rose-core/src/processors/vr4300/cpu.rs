@@ -259,10 +259,24 @@ impl CpuVR4300 {
                 15 => {
                     // SYNC: is a NOP on the VR4300i
                 }
-                16 => {} // MFHI
-                17 => {} // MTHI
+                16 => {
+                    // MFHI
+                    let instr = RTypeInstruction::from_raw(i);
+                    self.gpr[instr.rd as usize] = self.mult_hi;
+                }
+                17 => {
+                    // MTHI
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    self.mult_hi = rs;
+                }
                 18 => {} // MFLO
-                19 => {} // MTLO
+                19 => {
+                    // MTLO
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    self.mult_hi = rs;
+                }
                 20 => {
                     // DSLLV
                     if self.reg_size == RegSize::Reg32 {
