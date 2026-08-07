@@ -15,7 +15,7 @@ use crate::{
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CpuVR4300 {
     pub gpr: [u64; 32],
     pub fpr: [f64; 32],
@@ -981,7 +981,7 @@ impl CpuVR4300 {
             15 => {
                 // LUI
                 let instr = ITypeInstruction::from_raw(i);
-                let val = (((instr.imm as u32) << 16) as i32) as u64;
+                let val = ((instr.imm as i16) as u64) << 16;
                 self.gpr[instr.rt as usize] = val;
             }
             16 => {} // COP0
@@ -1592,10 +1592,7 @@ impl CpuVR4300 {
             return Ok(());
         }
 
-        let paddr = match self.translate_vaddr(vaddr) {
-            Ok(pa) => pa,
-            Err(e) => return Err(e),
-        };
+        let paddr = self.translate_vaddr(vaddr)?;
 
         bus.write8(paddr, value);
 
@@ -1621,10 +1618,7 @@ impl CpuVR4300 {
             return Ok(());
         }
 
-        let paddr = match self.translate_vaddr(vaddr) {
-            Ok(pa) => pa,
-            Err(e) => return Err(e),
-        };
+        let paddr = self.translate_vaddr(vaddr)?;
 
         bus.write16(paddr, value);
 
@@ -1650,10 +1644,7 @@ impl CpuVR4300 {
             return Ok(());
         }
 
-        let paddr = match self.translate_vaddr(vaddr) {
-            Ok(pa) => pa,
-            Err(e) => return Err(e),
-        };
+        let paddr = self.translate_vaddr(vaddr)?;
 
         bus.write32(paddr, value);
 
@@ -1679,10 +1670,7 @@ impl CpuVR4300 {
             return Ok(());
         }
 
-        let paddr = match self.translate_vaddr(vaddr) {
-            Ok(pa) => pa,
-            Err(e) => return Err(e),
-        };
+        let paddr = self.translate_vaddr(vaddr)?;
 
         bus.write32(paddr, (value >> 32) as u32);
         bus.write32(paddr, value as u32);
