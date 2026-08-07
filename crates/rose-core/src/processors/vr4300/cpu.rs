@@ -270,12 +270,16 @@ impl CpuVR4300 {
                     let rs = self.gpr[instr.rs as usize];
                     self.mult_hi = rs;
                 }
-                18 => {} // MFLO
+                18 => {
+                    // MFLO
+                    let instr = RTypeInstruction::from_raw(i);
+                    self.gpr[instr.rd as usize] = self.mult_lo;
+                }
                 19 => {
                     // MTLO
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize];
-                    self.mult_hi = rs;
+                    self.mult_lo = rs;
                 }
                 20 => {
                     // DSLLV
