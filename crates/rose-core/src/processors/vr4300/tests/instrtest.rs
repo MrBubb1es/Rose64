@@ -221,12 +221,12 @@ mod util {
         cpu.reg_size = reg_size;
         cpu.gpr[rs as usize] = rs_in;
         cpu.gpr[rt as usize] = rt_in;
-        cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr);
 
         let rt_out = cpu.gpr[rt as usize];
 
         assert_eq!(
-            cpu.last_exception,
+            exception,
             expected_exception,
             itype_fail_str!(),
             name,
@@ -243,7 +243,7 @@ mod util {
             expected_rt_out,
             expected_exception,
             rt_out,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -264,7 +264,7 @@ mod util {
             expected_rt_out,
             expected_exception,
             rt_out,
-            cpu.last_exception
+            exception
         );
     }
 
@@ -331,12 +331,12 @@ mod util {
         cpu.gpr[rs as usize] = rs_in;
         cpu.gpr[rt as usize] = rt_in;
         cpu.gpr[rd as usize] = rd_in;
-        cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr);
 
         let rd_out = cpu.gpr[rd as usize];
 
         assert_eq!(
-            cpu.last_exception,
+            exception,
             expected_exception,
             rtype_fail_str!(),
             name,
@@ -357,7 +357,7 @@ mod util {
             expected_rd_out,
             expected_exception,
             rd_out,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -382,7 +382,7 @@ mod util {
             expected_rd_out,
             expected_exception,
             rd_out,
-            cpu.last_exception
+            exception
         );
     }
 
@@ -412,10 +412,10 @@ mod util {
         cpu.gpr[rt as usize] = rt_in;
         cpu.mult_hi = hi_in;
         cpu.mult_lo = hi_in;
-        cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr);
 
         assert_eq!(
-            cpu.last_exception,
+            exception,
             expected_exception,
             divmul_fail_str!(),
             name,
@@ -436,7 +436,7 @@ mod util {
             expected_exception,
             cpu.mult_hi,
             cpu.mult_lo,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -461,7 +461,7 @@ mod util {
             expected_exception,
             cpu.mult_hi,
             cpu.mult_lo,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -486,7 +486,7 @@ mod util {
             expected_exception,
             cpu.mult_hi,
             cpu.mult_lo,
-            cpu.last_exception
+            exception
         );
     }
 
@@ -560,12 +560,12 @@ mod util {
         cpu.reg_size = reg_size;
         cpu.gpr[rs as usize] = base;
         cpu.gpr[rt as usize] = rt_in;
-        cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr);
 
         let rt_out = cpu.gpr[rt as usize];
 
         assert_eq!(
-            cpu.last_exception,
+            exception,
             expected_exception,
             load_fail_str!(),
             name,
@@ -583,7 +583,7 @@ mod util {
             expected_rt_out,
             expected_exception,
             rt_out,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -605,7 +605,7 @@ mod util {
             expected_rt_out,
             expected_exception,
             rt_out,
-            cpu.last_exception
+            exception
         );
     }
 
@@ -672,12 +672,12 @@ mod util {
         cpu.gpr[rs as usize] = base;
         cpu.gpr[rt as usize] = rt_in;
         cpu.llbit = false;
-        cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr);
 
         let rt_out = cpu.gpr[rt as usize];
 
         assert_eq!(
-            cpu.last_exception,
+            exception,
             expected_exception,
             load_fail_str!(),
             name,
@@ -695,7 +695,7 @@ mod util {
             expected_rt_out,
             expected_exception,
             rt_out,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -717,7 +717,7 @@ mod util {
             expected_rt_out,
             expected_exception,
             rt_out,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -789,12 +789,12 @@ mod util {
         cpu.reg_size = reg_size;
         cpu.gpr[rs as usize] = base;
         cpu.gpr[rt as usize] = rt_in;
-        cpu.execute_instruction(&mut bus, instr);
+        let exception = cpu.execute_instruction(&mut bus, instr);
 
         let actual_mem = bus.memory.rdram.0[window..window + expected_mem.len()].to_vec();
 
         assert_eq!(
-            cpu.last_exception,
+            exception,
             expected_exception,
             store_fail_str!(),
             name,
@@ -812,7 +812,7 @@ mod util {
             expected_mem,
             expected_exception,
             actual_mem,
-            cpu.last_exception
+            exception
         );
 
         assert_eq!(
@@ -834,7 +834,7 @@ mod util {
             expected_mem,
             expected_exception,
             actual_mem,
-            cpu.last_exception
+            exception
         );
     }
 }
@@ -893,7 +893,7 @@ mod alu_instructions {
             rt_in,
             rd_in,
             rd_out,
-            Some(CpuException::IntegerOverflow),
+            Some(CpuException::ArithmeticOverflow),
             None,
         );
     }
@@ -942,7 +942,7 @@ mod alu_instructions {
             rt_in,
             immediate,
             rt_out,
-            Some(CpuException::IntegerOverflow),
+            Some(CpuException::ArithmeticOverflow),
             None,
         );
     }
@@ -1310,7 +1310,7 @@ mod alu_instructions {
             rt_in,
             rd_in,
             rd_out,
-            Some(CpuException::IntegerOverflow),
+            Some(CpuException::ArithmeticOverflow),
             Some(RegSize::Reg64),
         );
     }
@@ -1384,7 +1384,7 @@ mod alu_instructions {
             rt_in,
             immediate,
             rt_out,
-            Some(CpuException::IntegerOverflow),
+            Some(CpuException::ArithmeticOverflow),
             Some(RegSize::Reg64),
         );
     }
@@ -1595,7 +1595,7 @@ mod alu_instructions {
             rt_in,
             rd_in,
             rd_out,
-            Some(CpuException::IntegerOverflow),
+            Some(CpuException::ArithmeticOverflow),
             None,
         );
     }
@@ -1721,7 +1721,7 @@ mod alu_instructions {
             rt_in as u64,
             rd_in,
             rd_in,
-            Some(CpuException::IntegerOverflow),
+            Some(CpuException::ArithmeticOverflow),
             Some(RegSize::Reg64),
         );
     }
