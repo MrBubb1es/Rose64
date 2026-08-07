@@ -248,9 +248,17 @@ impl CpuVR4300 {
                     self.gpr[instr.rd as usize] = self.pc.wrapping_add(8);
                     self.exec_state = ExecutionState::Delay(rs);
                 }
-                12 => {} // SYSCALL
-                13 => {} // BRK
-                15 => {} // SYNC
+                12 => {
+                    // SYSCALL
+                    return Err(CpuException::Syscall);
+                }
+                13 => {
+                    // BRK
+                    return Err(CpuException::Breakpoint);
+                }
+                15 => {
+                    // SYNC: is a NOP on the VR4300i
+                }
                 16 => {} // MFHI
                 17 => {} // MTHI
                 18 => {} // MFLO
@@ -538,12 +546,60 @@ impl CpuVR4300 {
 
                     self.gpr[instr.rd as usize] = result;
                 }
-                48 => {} // TGE
-                49 => {} // TGEU
-                50 => {} // TLT
-                51 => {} // TLTU
-                52 => {} // TEQ
-                54 => {} // TNE
+                48 => {
+                    // TGE
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    if rs >= rt {
+                        return Err(CpuException::Trap);
+                    }
+                }
+                49 => {
+                    // TGEU
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    if rs >= rt {
+                        return Err(CpuException::Trap);
+                    }
+                }
+                50 => {
+                    // TLT
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize] as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    if rs < rt {
+                        return Err(CpuException::Trap);
+                    }
+                }
+                51 => {
+                    // TLTU
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    if rs < rt {
+                        return Err(CpuException::Trap);
+                    }
+                }
+                52 => {
+                    // TEQ
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    if rs == rt {
+                        return Err(CpuException::Trap);
+                    }
+                }
+                54 => {
+                    // TNE
+                    let instr = RTypeInstruction::from_raw(i);
+                    let rs = self.gpr[instr.rs as usize];
+                    let rt = self.gpr[instr.rt as usize];
+                    if rs != rt {
+                        return Err(CpuException::Trap);
+                    }
+                }
                 56 => {
                     // DSLL
                     if self.reg_size == RegSize::Reg32 {
@@ -666,12 +722,60 @@ impl CpuVR4300 {
                             }
                         }
                     }
-                    8 => {}  // TGEI
-                    9 => {}  // TGEIU
-                    10 => {} // TLTI
-                    11 => {} // TLTIU
-                    12 => {} // TEQI
-                    14 => {} // TNEI
+                    8 => {
+                        // TGEI
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let imm = (instr.imm as i16) as i64;
+                        if rs >= imm {
+                            return Err(CpuException::Trap);
+                        }
+                    }
+                    9 => {
+                        // TGEIU
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize];
+                        let imm = (instr.imm as i16) as u64;
+                        if rs >= imm {
+                            return Err(CpuException::Trap);
+                        }
+                    }
+                    10 => {
+                        // TLTI
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize] as i64;
+                        let imm = (instr.imm as i16) as i64;
+                        if rs < imm {
+                            return Err(CpuException::Trap);
+                        }
+                    }
+                    11 => {
+                        // TLTIU
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize];
+                        let imm = (instr.imm as i16) as u64;
+                        if rs < imm {
+                            return Err(CpuException::Trap);
+                        }
+                    }
+                    12 => {
+                        // TEQI
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize];
+                        let imm = (instr.imm as i16) as u64;
+                        if rs == imm {
+                            return Err(CpuException::Trap);
+                        }
+                    }
+                    14 => {
+                        // TNEI
+                        let instr = ITypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize];
+                        let imm = (instr.imm as i16) as u64;
+                        if rs != imm {
+                            return Err(CpuException::Trap);
+                        }
+                    }
                     16 => {
                         // BLTZAL
                         if rose_likely(self.exec_state == ExecutionState::Normal) {
