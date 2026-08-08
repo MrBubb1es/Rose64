@@ -4296,7 +4296,19 @@ mod load_store_instructions {
     }
 }
 
-mod branch_instructions {}
+mod branch_instructions {
+    /// Test the BEQ instruction.
+    ///
+    /// # BEQ:
+    /// ## Type: I-Type
+    /// ## Operation:
+    /// - `GPR[rt] <- sign_extend_u64::<8>(Memory[GPR[rs] + sign_extend(imm)])`
+    /// ## Exceptions:
+    /// - None (any byte address is valid)
+    #[test]
+    fn test_lb() {
+    }
+}
 
 mod cop0_instructions {}
 

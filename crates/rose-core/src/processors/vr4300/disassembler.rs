@@ -4,19 +4,18 @@
 //! Author(s): MrBubblezsz
 //! -----------------------------------------------------------------------
 
-use crate::processors::vr4300::{ITypeInstruction, JTypeInstruction, RTypeInstruction};
+use crate::processors::vr4300::instructions::{ITypeInstruction, JTypeInstruction, RTypeInstruction};
 
 #[derive(Clone, Copy, Debug)]
 enum FormatPart {
-    Rd,
-    Rs,
-    Rt,         // Registers
-    OffsetBase, // Decimal offset AND rs register acting as base address.
-    // Shown as offset(base)
-    Sa,                         // Decimal shift amount
-    Target,                     // Target address
+    Rd,                         //  \
+    Rs,                         //  | - Registers
+    Rt,                         // /
+    OffsetBase, // Decimal offset AND rs register acting as base address. Shown as offset(base)
+    Sa,         // Decimal shift amount
+    Target,     // Target address
     Immediate { signed: bool }, // immediate data
-    CoFunc,                     // Coprocessor function
+    CoFunc,     // Coprocessor function
 }
 
 impl FormatPart {

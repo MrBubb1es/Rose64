@@ -124,7 +124,7 @@ fn run_bin_test(test_file: &str) {
     let pcode_start = code_start;
     let pcode_end = code_start + code_size;
 
-    println!("Writing {code_size} bytes of code to MEM[{pcode_start:08X}..{pcode_end:08X}]");
+    // println!("Writing {code_size} bytes of code to MEM[{pcode_start:08X}..{pcode_end:08X}]");
 
     for i in 0..code_size {
         bus.write8(
@@ -150,7 +150,7 @@ fn run_bin_test(test_file: &str) {
     for _ in 0..MAX_INSTRUCTIONS {
         let instr = bus.read32(translate_vaddr_simple(cpu.pc as u32));
         
-        println!("0x{:08X}: {}", cpu.pc as u32, Disassembler::instruction_string(cpu.pc, instr));
+        // println!("0x{:08X}: {}", cpu.pc as u32, Disassembler::instruction_string(cpu.pc, instr));
 
         if is_jr_instr(instr) {
             let rs = (instr >> 21) & 0x1F;
@@ -164,7 +164,7 @@ fn run_bin_test(test_file: &str) {
         instruction_count += 1;
     }
 
-    println!("Finished '{test_file}' after {instruction_count} instructions.");
+    // println!("Finished '{test_file}' after {instruction_count} instructions.");
 
     let mut memory_result = Vec::new();
 

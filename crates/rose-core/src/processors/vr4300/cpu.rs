@@ -10,12 +10,15 @@
 use crate::{
     common::hint::{rose_likely, rose_unlikely},
     memory::bus::{Bus, MemoryAccess},
-    processors::vr4300::cp0::Cp0,
+    processors::vr4300::{
+        cp0::Cp0,
+        instructions::{ITypeInstruction, JTypeInstruction, RTypeInstruction},
+    },
 };
 
 /// Representation of the N64's VR4300 processor.
 #[repr(C)] // Stable layout needed so JIT code can index fields by offset
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct CpuVR4300 {
     pub gpr: [u64; 32],
     pub fpr: [f64; 32],
@@ -30,103 +33,6 @@ pub struct CpuVR4300 {
 
     pub cp0: Cp0,
     exec_state: ExecutionState,
-}
-
-/// Data for an I-type instruction. An I-Type instruction has the structure:
-///
-/// <pre>
-/// +-----------------+-------+-------+----------------+
-/// | opcode (6 bits) | rs(5) | rt(5) | immediate (16) |
-/// +-----------------+-------+-------+----------------+
-/// </pre>
-pub(crate) struct ITypeInstruction {
-    pub opcode: u8,
-    pub rs: u8,
-    pub rt: u8,
-    pub imm: u16,
-}
-
-impl ITypeInstruction {
-    /// Take in a raw 32-bit I-type instruction and return a parsed
-    /// ITypeInstruction struct.
-    ///
-    /// # Argument:
-    /// - The instruction (u32)
-    /// # Returns:
-    /// - `ITypeInstruction` struct with separated fields
-    #[inline]
-    pub fn from_raw(i: u32) -> ITypeInstruction {
-        ITypeInstruction {
-            opcode: (i >> 26) as u8,
-            rs: ((i >> 21) & 0x1F) as u8,
-            rt: ((i >> 16) & 0x1F) as u8,
-            imm: i as u16,
-        }
-    }
-}
-
-/// Data for a J-type opcode. A J-Type instruction has the structure:
-/// <pre>
-/// +-----------------+------------------------------------+
-/// | opcode (6 bits) |          target (26 bits)          |
-/// +-----------------+------------------------------------+
-/// </pre>
-pub(crate) struct JTypeInstruction {
-    pub opcode: u8,
-    pub target: u32,
-}
-
-impl JTypeInstruction {
-    /// Take in a raw 32-bit J-type instruction and return a parsed
-    /// JTypeInstruction struct.
-    ///
-    /// # Argument:
-    /// - The instruction (u32)
-    /// # Returns:
-    /// - `JTypeInstruction` struct with separated fields
-    #[inline]
-    pub fn from_raw(i: u32) -> JTypeInstruction {
-        JTypeInstruction {
-            opcode: (i >> 26) as u8,
-            target: i & 0x3FFFFFF,
-        }
-    }
-}
-
-/// Data for an R-type opcode. An R-Type instruction has the structure:
-/// <pre>
-/// +-----------------+-------+-------+-------+-------+----------+
-/// | opcode (6 bits) | rs(5) | rt(5) | rd(5) | sa(5) | funct(6) |
-/// +-----------------+-------+-------+-------+-------+----------+
-/// </pre>
-pub(crate) struct RTypeInstruction {
-    pub opcode: u8,
-    pub rs: u8,
-    pub rt: u8,
-    pub rd: u8,
-    pub shift: u8,
-    pub funct: u8,
-}
-
-impl RTypeInstruction {
-    /// Take in a raw 32-bit R-type instruction and return a parsed
-    /// RTypeInstruction struct.
-    ///
-    /// # Argument:
-    /// - The instruction (u32)
-    /// # Returns:
-    /// - `RTypeInstruction` struct with separated fields
-    #[inline]
-    pub fn from_raw(i: u32) -> RTypeInstruction {
-        RTypeInstruction {
-            opcode: (i >> 26) as u8,
-            rs: ((i >> 21) & 0x1F) as u8,
-            rt: ((i >> 16) & 0x1F) as u8,
-            rd: ((i >> 11) & 0x1F) as u8,
-            shift: ((i >> 6) & 0x1F) as u8,
-            funct: (i & 0x3F) as u8,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
@@ -694,51 +600,19 @@ impl CpuVR4300 {
                 match rt {
                     0 => {
                         // BLTZ
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            if rs < 0 {
-                                let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                                self.exec_state = ExecutionState::Branch(addr);
-                            }
-                        }
+                        self.branch_instr(i, |rs: i64, _rt: i64| rs < 0, false);
                     }
                     1 => {
                         // BGEZ
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            if rs >= 0 {
-                                let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                                self.exec_state = ExecutionState::Branch(addr);
-                            }
-                        }
+                        self.branch_instr(i, |rs: i64, _rt: i64| rs >= 0, false);
                     }
                     2 => {
                         // BLTZL
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            if rs < 0 {
-                                let addr = self.pc.wrapping_add(offset);
-                                self.pc = addr; // Skip the +4 as this will be handled below
-                            }
-                        }
+                        self.branch_likely_instr(i, |rs: i64, _rt: i64| rs <= 0, false);
                     }
                     3 => {
                         // BGEZL
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            if rs >= 0 {
-                                let addr = self.pc.wrapping_add(offset);
-                                self.pc = addr; // Skip the +4 as this will be handled below
-                            }
-                        }
+                        self.branch_likely_instr(i, |rs: i64, _rt: i64| rs >= 0, false);
                     }
                     8 => {
                         // TGEI
@@ -796,61 +670,19 @@ impl CpuVR4300 {
                     }
                     16 => {
                         // BLTZAL
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            // Set link register to predicted addr
-                            self.gpr[Self::LR] = self.pc.wrapping_add(4);
-
-                            if rs < 0 {
-                                let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                                self.exec_state = ExecutionState::Branch(addr);
-                            }
-                        }
+                        self.branch_instr(i, |rs: i64, _rt: i64| rs < 0, true);
                     }
                     17 => {
                         // BGEZAL
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            // Set link register to predicted addr
-                            self.gpr[Self::LR] = self.pc.wrapping_add(4);
-
-                            if rs >= 0 {
-                                let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                                self.exec_state = ExecutionState::Branch(addr);
-                            }
-                        }
+                        self.branch_instr(i, |rs: i64, _rt: i64| rs >= 0, true);
                     }
                     18 => {
                         // BLTZALL
-                        if rose_likely(self.exec_state == ExecutionState::Normal) {
-                            let instr = ITypeInstruction::from_raw(i);
-                            let rs = self.gpr[instr.rs as usize] as i64;
-                            let offset = ((instr.imm as i16) as u64) << 2;
-                            // Set link register to predicted instruction addr
-                            let branch_addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                            self.gpr[Self::LR] = branch_addr;
-
-                            if rs < 0 {
-                                self.pc = branch_addr.wrapping_sub(4); // -4 bc there will be a +4 below
-                            }
-                        }
+                        self.branch_likely_instr(i, |rs: i64, _rt: i64| rs < 0, true);
                     }
-                    19 if rose_likely(!matches!(self.exec_state, ExecutionState::Branch(_))) => {
+                    19 => {
                         // BGEZALL
-                        let instr = ITypeInstruction::from_raw(i);
-                        let rs = self.gpr[instr.rs as usize] as i64;
-                        let offset = ((instr.imm as i16) as u64) << 2;
-                        // Set link register to predicted instruction addr
-                        let branch_addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                        self.gpr[Self::LR] = branch_addr;
-
-                        if rs >= 0 {
-                            self.pc = branch_addr.wrapping_sub(4); // -4 bc there will be a +4 below
-                        }
+                        self.branch_likely_instr(i, |rs: i64, _rt: i64| rs >= 0, true);
                     }
                     _ => {}
                 }
@@ -874,53 +706,19 @@ impl CpuVR4300 {
             }
             4 => {
                 // BEQ
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    let rt = self.gpr[instr.rt as usize];
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs == rt {
-                        let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                        self.exec_state = ExecutionState::Branch(addr);
-                    }
-                }
+                self.branch_instr(i, |rs: i64, rt: i64| rs == rt, false);
             }
             5 => {
                 // BNE
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    let rt = self.gpr[instr.rt as usize];
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs != rt {
-                        let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                        self.exec_state = ExecutionState::Branch(addr);
-                    }
-                }
+                self.branch_instr(i, |rs: i64, rt: i64| rs != rt, false);
             }
             6 => {
                 // BLEZ
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs <= 0 {
-                        let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                        self.exec_state = ExecutionState::Branch(addr);
-                    }
-                }
+                self.branch_instr(i, |rs: i64, _rt: i64| rs <= 0, false);
             }
             7 => {
                 // BGTZ
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs > 0 {
-                        let addr = self.pc.wrapping_add(offset).wrapping_add(4);
-                        self.exec_state = ExecutionState::Branch(addr);
-                    }
-                }
+                self.branch_instr(i, |rs: i64, _rt: i64| rs > 0, false);
             }
             8 => {
                 // ADDI
@@ -989,53 +787,19 @@ impl CpuVR4300 {
             18 => {} // COP2
             20 => {
                 // BEQL
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let rt = self.gpr[instr.rt as usize] as i64;
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs == rt {
-                        let addr = self.pc.wrapping_add(offset);
-                        self.pc = addr; // Skip the +4 bc pc will be incremented
-                    }
-                }
+                self.branch_likely_instr(i, |rs: i64, rt: i64| rs == rt, false);
             }
             21 => {
                 // BNEL
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let rt = self.gpr[instr.rt as usize] as i64;
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs != rt {
-                        let addr = self.pc.wrapping_add(offset);
-                        self.pc = addr; // Skip the +4 bc pc will be incremented
-                    }
-                }
+                self.branch_likely_instr(i, |rs: i64, rt: i64| rs != rt, false);
             }
             22 => {
                 // BLEZL
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs <= 0 {
-                        let addr = self.pc.wrapping_add(offset);
-                        self.pc = addr; // Skip the +4 bc pc will be incremented
-                    }
-                }
+                self.branch_likely_instr(i, |rs: i64, _rt: i64| rs <= 0, false);
             }
             23 => {
                 // BGTZL
-                if rose_likely(self.exec_state == ExecutionState::Normal) {
-                    let instr = ITypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let offset = ((instr.imm as i16) as u64) << 2;
-                    if rs <= 0 {
-                        let addr = self.pc.wrapping_add(offset);
-                        self.pc = addr; // Skip the +4 bc pc will be incremented
-                    }
-                }
+                self.branch_likely_instr(i, |rs: i64, _rt: i64| rs > 0, false);
             }
             24 => {
                 // DADDI
@@ -1354,7 +1118,7 @@ impl CpuVR4300 {
                     _ => unreachable!(),
                 }
             }
-            47 => { /* Not simulating CACHE for now, NOP */ } // CASHE
+            47 => { /* Not simulating CACHE for now, NOP */ } // CACHE
             48 => {
                 // LL
                 let instr = ITypeInstruction::from_raw(i);
@@ -1465,6 +1229,55 @@ impl CpuVR4300 {
         }
 
         Ok(())
+    }
+
+    /// General branch instruction handler
+    #[inline(always)]
+    fn branch_instr<F>(&mut self, i: u32, cond: F, link: bool)
+    where
+        F: Fn(i64, i64) -> bool,
+    {
+        if rose_likely(self.exec_state == ExecutionState::Normal) {
+            let instr = ITypeInstruction::from_raw(i);
+            let rs = self.gpr[instr.rs as usize] as i64;
+            let rt = self.gpr[instr.rt as usize] as i64;
+            let offset = ((instr.imm as i16) as u64) << 2;
+            let branch_addr = self.pc.wrapping_add(offset).wrapping_add(4);
+
+            if link {
+                // Set link register to predicted instruction addr
+                self.gpr[Self::LR] = branch_addr;
+            }
+
+            if cond(rs, rt) {
+                self.exec_state = ExecutionState::Branch(branch_addr);
+            }
+        }
+    }
+
+    /// General branch likely instruction handler
+    #[inline(always)]
+    fn branch_likely_instr<F>(&mut self, i: u32, cond: F, link: bool)
+    where
+        F: Fn(i64, i64) -> bool,
+    {
+        if rose_likely(self.exec_state == ExecutionState::Normal) {
+            let instr = ITypeInstruction::from_raw(i);
+            let rs = self.gpr[instr.rs as usize] as i64;
+            let rt = self.gpr[instr.rt as usize] as i64;
+            let offset = ((instr.imm as i16) as u64) << 2;
+            let branch_addr = self.pc.wrapping_add(offset).wrapping_add(4);
+
+            if link {
+                self.gpr[Self::LR] = branch_addr;
+            }
+
+            if cond(rs, rt) {
+                self.exec_state = ExecutionState::Branch(branch_addr);
+            } else {
+                self.pc = self.pc.wrapping_add(4); // Skip delay slot instruction
+            }
+        }
     }
 
     #[inline]
