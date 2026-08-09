@@ -66,8 +66,21 @@ pub enum CpuException {
 enum ExecutionState {
     #[default]
     Normal,
-    Branch(u64),
-    Delay(u64),
+    /// Jumping and branching instructions move to this execution state. This
+    /// is an intermediate state that is immediately set to the Delay state
+    /// at the end of the instruction.
+    Jump {
+        addr: u64,
+        taken: bool,
+    },
+    /// The state the CPU is in when executing a delay slot instruction. This
+    /// affects the execution of some instructions (namely jumps and branches,
+    /// see ASSUMPTIONS.md), and causes the delay bit to be set in CP0 when
+    /// an exception occurs.
+    Delay {
+        addr: u64,
+        taken: bool,
+    },
 }
 
 impl CpuVR4300 {
@@ -80,8 +93,12 @@ impl CpuVR4300 {
         CpuVR4300::default()
     }
 
+    pub fn in_branch_delay_slot(&self) -> bool {
+        matches!(self.exec_state, ExecutionState::Delay { .. })
+    }
+
     pub fn execute_instruction(&mut self, bus: &mut Bus, i: u32) -> Result<(), CpuException> {
-        assert!(!matches!(self.exec_state, ExecutionState::Branch(_)));
+        assert!(!matches!(self.exec_state, ExecutionState::Jump { .. }));
 
         let opcode = i >> 26;
 
@@ -143,16 +160,26 @@ impl CpuVR4300 {
                 }
                 8 => {
                     // JR
-                    let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    self.exec_state = ExecutionState::Delay(rs);
+                    if rose_likely(!self.in_branch_delay_slot()) {
+                        let instr = RTypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize];
+                        self.exec_state = ExecutionState::Jump {
+                            addr: rs,
+                            taken: true,
+                        };
+                    }
                 }
                 9 => {
                     // JALR
-                    let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    self.gpr[instr.rd as usize] = self.pc.wrapping_add(8);
-                    self.exec_state = ExecutionState::Delay(rs);
+                    if rose_likely(!self.in_branch_delay_slot()) {
+                        let instr = RTypeInstruction::from_raw(i);
+                        let rs = self.gpr[instr.rs as usize];
+                        self.gpr[instr.rd as usize] = self.pc.wrapping_add(8);
+                        self.exec_state = ExecutionState::Jump {
+                            addr: rs,
+                            taken: true,
+                        };
+                    }
                 }
                 12 => {
                     // SYSCALL
@@ -689,20 +716,26 @@ impl CpuVR4300 {
             }
             2 => {
                 // J
-                let addr_hi = self.pc & 0xFFFFFFFF_F0000000;
                 let instr = JTypeInstruction::from_raw(i);
-                let target = instr.target << 2;
-                let new_addr = addr_hi | (target as u64);
-                self.exec_state = ExecutionState::Delay(new_addr);
+                let addr_hi = self.pc.wrapping_add(4) & 0xFFFFFFFF_F0000000;
+                let addr_lo = instr.target << 2;
+                let new_addr = addr_hi | (addr_lo as u64);
+                self.exec_state = ExecutionState::Jump {
+                    addr: new_addr,
+                    taken: true,
+                };
             }
             3 => {
                 // JAL
-                let addr_hi = self.pc & 0xFFFFFFFF_F0000000;
                 let instr = JTypeInstruction::from_raw(i);
-                let target = instr.target << 2;
-                let new_addr = addr_hi | (target as u64);
+                let addr_hi = self.pc.wrapping_add(4) & 0xFFFFFFFF_F0000000;
+                let addr_lo = instr.target << 2;
+                let new_addr = addr_hi | (addr_lo as u64);
                 self.gpr[Self::LR] = self.pc.wrapping_add(8);
-                self.exec_state = ExecutionState::Delay(new_addr);
+                self.exec_state = ExecutionState::Jump {
+                    addr: new_addr,
+                    taken: true,
+                };
             }
             4 => {
                 // BEQ
@@ -1217,13 +1250,15 @@ impl CpuVR4300 {
 
         match self.exec_state {
             ExecutionState::Normal => {}
-            ExecutionState::Branch(addr) => {
-                // Just did a branch instruction, next instruction is delay slot
-                self.exec_state = ExecutionState::Delay(addr);
+            ExecutionState::Jump { addr, taken } => {
+                self.exec_state = ExecutionState::Delay { addr, taken };
             }
-            ExecutionState::Delay(addr) => {
-                // Execute a previously set-up branch/jump instruction.
-                self.pc = addr;
+            ExecutionState::Delay { addr, taken } => {
+                if taken {
+                    // Execute a previously set-up branch/jump instruction.
+                    self.pc = addr;
+                }
+
                 self.exec_state = ExecutionState::Normal;
             }
         }
@@ -1237,7 +1272,7 @@ impl CpuVR4300 {
     where
         F: Fn(i64, i64) -> bool,
     {
-        if rose_likely(self.exec_state == ExecutionState::Normal) {
+        if rose_likely(!self.in_branch_delay_slot()) {
             let instr = ITypeInstruction::from_raw(i);
             let rs = self.gpr[instr.rs as usize] as i64;
             let rt = self.gpr[instr.rt as usize] as i64;
@@ -1249,9 +1284,10 @@ impl CpuVR4300 {
                 self.gpr[Self::LR] = branch_addr;
             }
 
-            if cond(rs, rt) {
-                self.exec_state = ExecutionState::Branch(branch_addr);
-            }
+            self.exec_state = ExecutionState::Jump {
+                addr: branch_addr,
+                taken: cond(rs, rt),
+            };
         }
     }
 
@@ -1261,7 +1297,7 @@ impl CpuVR4300 {
     where
         F: Fn(i64, i64) -> bool,
     {
-        if rose_likely(self.exec_state == ExecutionState::Normal) {
+        if rose_likely(!self.in_branch_delay_slot()) {
             let instr = ITypeInstruction::from_raw(i);
             let rs = self.gpr[instr.rs as usize] as i64;
             let rt = self.gpr[instr.rt as usize] as i64;
@@ -1273,8 +1309,12 @@ impl CpuVR4300 {
             }
 
             if cond(rs, rt) {
-                self.exec_state = ExecutionState::Branch(branch_addr);
+                self.exec_state = ExecutionState::Jump {
+                    addr: branch_addr,
+                    taken: true,
+                };
             } else {
+                // TODO: Exception during this delay slot?
                 self.pc = self.pc.wrapping_add(4); // Skip delay slot instruction
             }
         }

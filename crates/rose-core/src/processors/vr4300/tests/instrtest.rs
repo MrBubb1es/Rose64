@@ -4297,16 +4297,187 @@ mod load_store_instructions {
 }
 
 mod branch_instructions {
-    /// Test the BEQ instruction.
-    ///
-    /// # BEQ:
-    /// ## Type: I-Type
-    /// ## Operation:
-    /// - `GPR[rt] <- sign_extend_u64::<8>(Memory[GPR[rs] + sign_extend(imm)])`
-    /// ## Exceptions:
-    /// - None (any byte address is valid)
+    use crate::{memory::bus::{Bus, MemoryAccess}, processors::vr4300::CpuVR4300};
+    use super::util::{test_rom, itype_instr, RDRAM_BASE};
+
+    /// Tests behavior relating to branch delay slots.
+    /// 
+    /// ## Normal Branch Behavior:
+    /// - If branch taken, following instruction executed as delay slot,
+    ///   then PC is set to branch destination address.
+    /// - If branch not taken, following instruction executed as delay slot,
+    ///   then PC is incremented as normal.
+    /// - Branches in delay slots are not executed (see ASSUMPTIONS.md).
+    /// ## Branch Likely Behavior:
+    /// - If branch taken, following instruction executed as delay slot,
+    ///   then PC is set to branch destination address.
+    /// - If branch not taken, then the delay slot instruction (immediately
+    ///   following the branch) is skipped entirely. The PC is incremented
+    ///   by a total of 8.
+    /// 
+    /// All of the branch instructions use the same basic branch/branch_likely
+    /// functions. We test these mechanics using BEQ, but the same behavior
+    /// applies to all branch instructions.
+    /// 
+    /// ## Setup:
+    /// 
+    /// Normal Branch + Branch Likely (Taken):
+    /// 
+    /// <pre>
+    /// A: LW $rt,FAIL
+    /// B: BEQ E
+    /// C: LW $rt,SUCCESS
+    /// D: end test
+    /// ...
+    /// E: end test
+    /// </pre>
+    /// 
+    /// We load rt with some fail value. If the branch is taken, we should
+    /// still execute C and observe that PC == E and rt == SUCCESS after C.
+    /// If the branch is not taken, we should observe PC == D and
+    /// rt == SUCCESS. \
+    /// 
+    /// Branch Likely (Not Taken):
+    /// 
+    /// <pre>
+    /// A: LW $rt,SUCCESS
+    /// B: BEQ D
+    /// C: LW $rt,FAIL
+    /// ...
+    /// D: end test
+    /// </pre>
+    /// 
+    /// We should observe that the delay slot instruction (C) is skipped when
+    /// BEQL is not taken, resulting in PC == D and rt == SUCCESS.
     #[test]
-    fn test_lb() {
+    fn test_delay_slot_mechanics() {
+        const BEQ_OPCODE: u32 = 0b000100;
+        const BEQL_OPCODE: u32 = 0b010100;
+        const LW_OPCODE: u32  = 0b100011;
+        const MEM_FAIL: u32 = 0xFFFFFFFF;
+        const MEM_SUCCESS: u32 = 0xEEEEEEEE;
+        const FAIL_PADDR: u32 = 0x00000020;
+        const SUCCESS_PADDR: u32 = 0x00000024;
+        
+        let mut cpu = CpuVR4300::new();
+        let mut bus = Bus::new(test_rom()).unwrap();
+
+        let map_kseg0_addr = |addr: u64| -> u32 { addr as u32 - 0x80000000 };
+
+        let rs: u32 = 2;
+        let rt: u32 = 3;
+        let pass_fail_reg: u32 = 4;
+        let reg_rdram_base: u32 = 5;
+
+        bus.write32(SUCCESS_PADDR, MEM_SUCCESS);
+        bus.write32(FAIL_PADDR, MEM_FAIL);
+
+        assert_eq!(bus.read32(SUCCESS_PADDR), MEM_SUCCESS);
+        assert_eq!(bus.read32(FAIL_PADDR), MEM_FAIL);
+
+        // LW $r4,FAIL
+        bus.write32(0, itype_instr(LW_OPCODE, reg_rdram_base, pass_fail_reg, FAIL_PADDR));
+        // BEQ $r2,$r3,tgt_00000010
+        bus.write32(4, itype_instr(BEQ_OPCODE, rs, rt, 0x0002));
+        // LW $r4,SUCCESS
+        bus.write32(8, itype_instr(LW_OPCODE, reg_rdram_base, pass_fail_reg, SUCCESS_PADDR));
+
+        // BEQ Taken Test
+        cpu.pc = RDRAM_BASE;
+        cpu.gpr[rs as usize] = 0x00000000_00000001;
+        cpu.gpr[rt as usize] = 0x00000000_00000001;
+        cpu.gpr[reg_rdram_base as usize] = RDRAM_BASE;
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        assert_eq!(cpu.pc, 0xFFFFFFFF_80000010, "PC did not match expected branch taken PC");
+        assert_eq!(cpu.gpr[pass_fail_reg as usize] as u32, MEM_SUCCESS, "Pass/Fail Register did not finish with SUCCESS");
+
+        // BEQ Not Taken Test
+        cpu.pc = RDRAM_BASE;
+        cpu.gpr[rs as usize] = 0x00000000_00000001;
+        cpu.gpr[rt as usize] = 0xFFFFFFFF_FFFFFFFF;
+        cpu.gpr[reg_rdram_base as usize] = RDRAM_BASE;
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        assert_eq!(cpu.pc, 0xFFFFFFFF_8000000C, "PC did not match expected branch not taken PC");
+        assert_eq!(cpu.gpr[pass_fail_reg as usize] as u32, MEM_SUCCESS, "Pass/Fail Register did not finish with SUCCESS");
+
+        // BEQL Taken Test
+
+        // LW $r4,FAIL
+        bus.write32(0, itype_instr(LW_OPCODE, reg_rdram_base, pass_fail_reg, FAIL_PADDR));
+        // BEQL $r2,$r3,tgt_00000010
+        bus.write32(4, itype_instr(BEQL_OPCODE, rs, rt, 0x0002));
+        // LW $r4,SUCCESS
+        bus.write32(8, itype_instr(LW_OPCODE, reg_rdram_base, pass_fail_reg, SUCCESS_PADDR));
+
+        cpu.pc = RDRAM_BASE;
+        cpu.gpr[rs as usize] = 0x00000000_00000001;
+        cpu.gpr[rt as usize] = 0x00000000_00000001;
+        cpu.gpr[reg_rdram_base as usize] = RDRAM_BASE;
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        assert_eq!(cpu.pc, 0xFFFFFFFF_80000010, "PC did not match expected branch taken PC");
+        assert_eq!(cpu.gpr[pass_fail_reg as usize] as u32, MEM_SUCCESS, "Pass/Fail Register did not finish with SUCCESS");
+
+        // BEQL Not Taken Test
+
+        // LW $r4,SUCCESS
+        bus.write32(0, itype_instr(LW_OPCODE, reg_rdram_base, pass_fail_reg, SUCCESS_PADDR));
+        // BEQL $r2,$r3,tgt_00000010
+        bus.write32(4, itype_instr(BEQL_OPCODE, rs, rt, 0x0002));
+        // LW $r4,FAIL  (Skipped)
+        bus.write32(8, itype_instr(LW_OPCODE, reg_rdram_base, pass_fail_reg, FAIL_PADDR));
+
+        cpu.pc = RDRAM_BASE;
+        cpu.gpr[rs as usize] = 0x00000000_00000001;
+        cpu.gpr[rt as usize] = 0xFFFFFFFF_FFFFFFFF;
+        cpu.gpr[reg_rdram_base as usize] = RDRAM_BASE;
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot());
+
+        let instr = bus.read32(map_kseg0_addr(cpu.pc));
+        assert_eq!(cpu.execute_instruction(&mut bus, instr), Ok(()), "Exception should not occur");
+        assert!(!cpu.in_branch_delay_slot()); // Delay slot skipped
+
+        assert_eq!(cpu.pc, 0xFFFFFFFF_8000000C, "PC did not match expected branch taken PC");
+        assert_eq!(cpu.gpr[pass_fail_reg as usize] as u32, MEM_SUCCESS, "Pass/Fail Register did not finish with SUCCESS");
+
     }
 }
 
