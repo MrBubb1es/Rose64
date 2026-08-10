@@ -8,3 +8,5 @@
 - Assuming we can execute the BranchLikely (BEQL, BGTZL, etc.) instructions
   without worrying about the delay slot - we simply branch on the spot and work
   out the timing.
+- Assuming MTLO/HI & MFLO/HI instructions can load values into/from regs
+  immediately. We are ignoring the cycles where the destination is undefined.

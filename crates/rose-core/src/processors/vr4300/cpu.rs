@@ -69,18 +69,12 @@ enum ExecutionState {
     /// Jumping and branching instructions move to this execution state. This
     /// is an intermediate state that is immediately set to the Delay state
     /// at the end of the instruction.
-    Jump {
-        addr: u64,
-        taken: bool,
-    },
+    Jump { addr: u64, taken: bool },
     /// The state the CPU is in when executing a delay slot instruction. This
     /// affects the execution of some instructions (namely jumps and branches,
     /// see ASSUMPTIONS.md), and causes the delay bit to be set in CP0 when
     /// an exception occurs.
-    Delay {
-        addr: u64,
-        taken: bool,
-    },
+    Delay { addr: u64, taken: bool },
 }
 
 impl CpuVR4300 {
@@ -200,8 +194,7 @@ impl CpuVR4300 {
                 17 => {
                     // MTHI
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    self.mult_hi = rs;
+                    self.mult_hi = self.gpr[instr.rs as usize];
                 }
                 18 => {
                     // MFLO
@@ -211,8 +204,7 @@ impl CpuVR4300 {
                 19 => {
                     // MTLO
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize];
-                    self.mult_lo = rs;
+                    self.mult_lo = self.gpr[instr.rs as usize];
                 }
                 20 => {
                     // DSLLV
@@ -253,40 +245,72 @@ impl CpuVR4300 {
                 }
                 24 => {
                     // MULT
+                    //
+                    // MULT HARDWARE BUG:
+                    //   Acts as a 64-bit by 35-bit signed multiplication,
+                    //   affecting results when registers are not properly sign
+                    //   extended values. See:
+                    //   https://n64brew.dev/wiki/VR4300#Sign_extension_bugs
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i32;
-                    let rt = self.gpr[instr.rt as usize] as i32;
-                    let prod = rs as i64 * rt as i64;
+                    let rs = self.gpr[instr.rs as usize] as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    let rt_sign_ext = (rt << 29) >> 29;
+                    let prod = rs.wrapping_mul(rt_sign_ext);
                     self.mult_lo = (prod as i32) as u64;
-                    self.mult_hi = ((prod >> 32) as i32) as u64;
+                    self.mult_hi = (prod >> 32) as u64;
                 }
                 25 => {
                     // MULTU
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as u32;
-                    let rt = self.gpr[instr.rt as usize] as u32;
-                    let prod = rs as i64 * rt as i64;
+                    let rs = self.gpr[instr.rs as usize] as u32 as u64;
+                    let rt = self.gpr[instr.rt as usize] as u32 as u64;
+                    let prod = rs * rt;
                     self.mult_lo = (prod as i32) as u64;
                     self.mult_hi = ((prod >> 32) as i32) as u64;
                 }
                 26 => {
                     // DIV
+                    // 
+                    // DIV HARDWARE BUG:
+                    //   Acts as a 32-bit by 35-bit signed division, affecting
+                    //   results when registers are not properly sign extended
+                    //   values. Additionally, if bits 63 and 32 of $rt differ,
+                    //   then the quotient is an unknown incorrect value, and
+                    //   the remainder is calculated via `rs - q*rt`. We are not
+                    //   modeling the behavior in this case, as there is no
+                    //   source documenting what the output should be. See:
+                    //   https://n64brew.dev/wiki/VR4300#Sign_extension_bugs
+                    //
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i32;
-                    let rt = self.gpr[instr.rt as usize] as i32;
-                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 { 1 } else { -1 });
-                    let r = rs.checked_rem(rt).unwrap_or(rs);
+                    let rs = self.gpr[instr.rs as usize] as i32 as i64;
+                    let rt = self.gpr[instr.rt as usize] as i64;
+                    let rt_sign_ext = (rt << 29) >> 29;
 
-                    self.mult_lo = q as u64;
-                    self.mult_hi = r as u64;
+                    let (q, r) = if rt == 0 {
+                        (
+                            if rs < 0 { 1 } else { -1 },
+                            rs,
+                        )
+                    } else {
+                        (rs / rt_sign_ext, rs % rt_sign_ext)
+                    };
+
+                    self.mult_lo = (q as i32) as u64;
+                    self.mult_hi = (r as i32) as u64;
                 }
                 27 => {
                     // DIVU
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize] as u32;
                     let rt = self.gpr[instr.rt as usize] as u32;
-                    let q = rs.checked_div(rt).unwrap_or(u32::MAX);
-                    let r = rs.checked_rem(rt).unwrap_or(rs);
+
+                    // TODO: Maybe rose_unlikely
+                    #[allow(clippy::manual_checked_ops)]
+                    let (q, r) = if rt == 0 {
+                        (u32::MAX, rs)
+                    } else {
+                        (rs / rt, rs % rt)
+                    };
 
                     self.mult_lo = (q as i32) as u64;
                     self.mult_hi = (r as i32) as u64;
@@ -320,10 +344,18 @@ impl CpuVR4300 {
                 30 => {
                     // DDIV
                     let instr = RTypeInstruction::from_raw(i);
-                    let rs = self.gpr[instr.rs as usize] as i64;
-                    let rt = self.gpr[instr.rt as usize] as i64;
-                    let q = rs.checked_div(rt).unwrap_or(if rs < 0 { 1 } else { -1 });
-                    let r = rs.checked_rem(rt).unwrap_or(rs);
+                    let rs = self.gpr[instr.rs as usize] as i64 as i128;
+                    let rt = self.gpr[instr.rt as usize] as i64 as i128;
+
+                    // TODO: Maybe rose_unlikely
+                    let (q, r) = if rt == 0 {
+                        (
+                            if rs < 0 { 1 } else { -1 },
+                            rs as i64,
+                        )
+                    } else {
+                        ((rs / rt) as i64, (rs % rt) as i64)
+                    };
 
                     self.mult_lo = q as u64;
                     self.mult_hi = r as u64;
@@ -333,8 +365,14 @@ impl CpuVR4300 {
                     let instr = RTypeInstruction::from_raw(i);
                     let rs = self.gpr[instr.rs as usize];
                     let rt = self.gpr[instr.rt as usize];
-                    let q = rs.checked_div(rt).unwrap_or(u64::MAX);
-                    let r = rs.checked_rem(rt).unwrap_or(rs);
+
+                    // TODO: Maybe rose_unlikely
+                    #[allow(clippy::manual_checked_ops)]
+                    let (q, r) = if rt == 0 {
+                        (u64::MAX, rs)
+                    } else {
+                        (rs / rt, rs % rt)
+                    };
 
                     self.mult_lo = q;
                     self.mult_hi = r;
@@ -357,8 +395,8 @@ impl CpuVR4300 {
                     // ADDU
                     let instr = RTypeInstruction::from_raw(i);
 
-                    let rs = self.gpr[instr.rs as usize] as i32;
-                    let rt = self.gpr[instr.rt as usize] as i32;
+                    let rs = self.gpr[instr.rs as usize] as u32;
+                    let rt = self.gpr[instr.rt as usize] as u32;
                     let sum = rs.wrapping_add(rt);
 
                     self.gpr[instr.rd as usize] = sum as u64;
@@ -816,12 +854,18 @@ impl CpuVR4300 {
             15 => {
                 // LUI
                 let instr = ITypeInstruction::from_raw(i);
-                let val = ((instr.imm as i16) as u64) << 16;
+                let val = ((instr.imm as i32) << 16) as u64;
                 self.gpr[instr.rt as usize] = val;
             }
-            16 => { todo!("Instruction COP0") } // COP0
-            17 => { todo!("Instruction COP1") } // COP1
-            18 => { todo!("Instruction COP2") } // COP2
+            16 => {
+                todo!("Instruction COP0")
+            } // COP0
+            17 => {
+                todo!("Instruction COP1")
+            } // COP1
+            18 => {
+                todo!("Instruction COP2")
+            } // COP2
             20 => {
                 // BEQL
                 self.branch_likely_instr(i, |rs: i64, rt: i64| rs == rt, false);
@@ -977,8 +1021,16 @@ impl CpuVR4300 {
                 let byte_offset = vaddr & 3;
                 let shift = 8 * (3 - byte_offset as u32);
                 let mask = u32::MAX.checked_shl(32 - shift).unwrap_or(0);
-                let result = (rt & mask) | (value >> shift);
-                self.gpr[instr.rt as usize] = (result as i32) as u64;
+                let combined = (rt & mask) | (value >> shift);
+
+                // Sign extend only if loading a full word.
+                let result = if byte_offset == 3 {
+                    combined as i32 as u64
+                } else {
+                    (self.gpr[instr.rt as usize] & 0xFFFFFFFF_00000000) | combined as u64
+                };
+
+                self.gpr[instr.rt as usize] = result;
             }
             39 => {
                 // LWU
@@ -1164,11 +1216,15 @@ impl CpuVR4300 {
                 let paddr = self.translate_vaddr(vaddr as u32)?;
                 let value = self.pread32(bus, paddr)?;
                 self.gpr[instr.rt as usize] = (value as i32) as u64;
-                self.cp0.lladdr = paddr;
+                self.cp0.set_lladdr(paddr);
                 self.llbit = true;
             }
-            49 => { todo!("Instruction LWC1") } // LWC1
-            50 => { todo!("Instruction LWC2") } // LWC2
+            49 => {
+                todo!("Instruction LWC1")
+            } // LWC1
+            50 => {
+                todo!("Instruction LWC2")
+            } // LWC2
             52 => {
                 // LLD
                 if self.reg_size == RegSize::Reg32 {
@@ -1181,11 +1237,15 @@ impl CpuVR4300 {
                 let paddr = self.translate_vaddr(vaddr as u32)?;
                 let value = self.pread64(bus, paddr)?;
                 self.gpr[instr.rt as usize] = value;
-                self.cp0.lladdr = paddr;
+                self.cp0.set_lladdr(paddr);
                 self.llbit = true;
             }
-            53 => { todo!("Instruction LDC1") } // LDC1
-            54 => { todo!("Instruction LDC2") } // LDC2
+            53 => {
+                todo!("Instruction LDC1")
+            } // LDC1
+            54 => {
+                todo!("Instruction LDC2")
+            } // LDC2
             55 => {
                 // LD
                 if self.reg_size == RegSize::Reg32 {
@@ -1212,8 +1272,12 @@ impl CpuVR4300 {
 
                 self.gpr[instr.rt as usize] = 1;
             }
-            57 => { todo!("Instruction SWC1") } // SWC1
-            58 => { todo!("Instruction SWC2") } // SWC2
+            57 => {
+                todo!("Instruction SWC1")
+            } // SWC1
+            58 => {
+                todo!("Instruction SWC2")
+            } // SWC2
             60 => {
                 // SCD
                 if self.reg_size == RegSize::Reg32 {
@@ -1231,8 +1295,12 @@ impl CpuVR4300 {
 
                 self.gpr[instr.rt as usize] = 1;
             }
-            61 => { todo!("Instruction SDC1") } // SDC1
-            62 => { todo!("Instruction SDC2") } // SDC2
+            61 => {
+                todo!("Instruction SDC1")
+            } // SDC1
+            62 => {
+                todo!("Instruction SDC2")
+            } // SDC2
             63 => {
                 // SD
                 if self.reg_size == RegSize::Reg32 {
@@ -1285,7 +1353,7 @@ impl CpuVR4300 {
 
             if link {
                 // Set link register to predicted instruction addr
-                self.gpr[Self::LR] = branch_addr;
+                self.gpr[Self::LR] = self.pc.wrapping_add(8);
             }
 
             self.exec_state = ExecutionState::Jump {
@@ -1309,7 +1377,7 @@ impl CpuVR4300 {
             let branch_addr = self.pc.wrapping_add(offset).wrapping_add(4);
 
             if link {
-                self.gpr[Self::LR] = branch_addr;
+                self.gpr[Self::LR] = self.pc.wrapping_add(8);
             }
 
             if cond(rs, rt) {
