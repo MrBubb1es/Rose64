@@ -716,26 +716,30 @@ impl CpuVR4300 {
             }
             2 => {
                 // J
-                let instr = JTypeInstruction::from_raw(i);
-                let addr_hi = self.pc.wrapping_add(4) & 0xFFFFFFFF_F0000000;
-                let addr_lo = instr.target << 2;
-                let new_addr = addr_hi | (addr_lo as u64);
-                self.exec_state = ExecutionState::Jump {
-                    addr: new_addr,
-                    taken: true,
-                };
+                if rose_likely(!self.in_branch_delay_slot()) {
+                    let instr = JTypeInstruction::from_raw(i);
+                    let addr_hi = self.pc.wrapping_add(4) & 0xFFFFFFFF_F0000000;
+                    let addr_lo = instr.target << 2;
+                    let new_addr = addr_hi | (addr_lo as u64);
+                    self.exec_state = ExecutionState::Jump {
+                        addr: new_addr,
+                        taken: true,
+                    };
+                }
             }
             3 => {
                 // JAL
-                let instr = JTypeInstruction::from_raw(i);
-                let addr_hi = self.pc.wrapping_add(4) & 0xFFFFFFFF_F0000000;
-                let addr_lo = instr.target << 2;
-                let new_addr = addr_hi | (addr_lo as u64);
-                self.gpr[Self::LR] = self.pc.wrapping_add(8);
-                self.exec_state = ExecutionState::Jump {
-                    addr: new_addr,
-                    taken: true,
-                };
+                if rose_likely(!self.in_branch_delay_slot()) {
+                    let instr = JTypeInstruction::from_raw(i);
+                    let addr_hi = self.pc.wrapping_add(4) & 0xFFFFFFFF_F0000000;
+                    let addr_lo = instr.target << 2;
+                    let new_addr = addr_hi | (addr_lo as u64);
+                    self.gpr[Self::LR] = self.pc.wrapping_add(8);
+                    self.exec_state = ExecutionState::Jump {
+                        addr: new_addr,
+                        taken: true,
+                    };
+                }
             }
             4 => {
                 // BEQ
