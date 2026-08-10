@@ -815,9 +815,9 @@ impl CpuVR4300 {
                 let val = ((instr.imm as i16) as u64) << 16;
                 self.gpr[instr.rt as usize] = val;
             }
-            16 => {} // COP0
-            17 => {} // COP1
-            18 => {} // COP2
+            16 => { todo!("Instruction COP0") } // COP0
+            17 => { todo!("Instruction COP1") } // COP1
+            18 => { todo!("Instruction COP2") } // COP2
             20 => {
                 // BEQL
                 self.branch_likely_instr(i, |rs: i64, rt: i64| rs == rt, false);
@@ -1163,8 +1163,8 @@ impl CpuVR4300 {
                 self.cp0.lladdr = paddr;
                 self.llbit = true;
             }
-            49 => {} // LWC1
-            50 => {} // LWC2
+            49 => { todo!("Instruction LWC1") } // LWC1
+            50 => { todo!("Instruction LWC2") } // LWC2
             52 => {
                 // LLD
                 if self.reg_size == RegSize::Reg32 {
@@ -1180,8 +1180,8 @@ impl CpuVR4300 {
                 self.cp0.lladdr = paddr;
                 self.llbit = true;
             }
-            53 => {} // LDC1
-            54 => {} // LDC2
+            53 => { todo!("Instruction LDC1") } // LDC1
+            54 => { todo!("Instruction LDC2") } // LDC2
             55 => {
                 // LD
                 if self.reg_size == RegSize::Reg32 {
@@ -1208,8 +1208,8 @@ impl CpuVR4300 {
 
                 self.gpr[instr.rt as usize] = 1;
             }
-            57 => {} // SWC1
-            58 => {} // SWC2
+            57 => { todo!("Instruction SWC1") } // SWC1
+            58 => { todo!("Instruction SWC2") } // SWC2
             60 => {
                 // SCD
                 if self.reg_size == RegSize::Reg32 {
@@ -1227,8 +1227,8 @@ impl CpuVR4300 {
 
                 self.gpr[instr.rt as usize] = 1;
             }
-            61 => {} // SDC1
-            62 => {} // SDC2
+            61 => { todo!("Instruction SDC1") } // SDC1
+            62 => { todo!("Instruction SDC2") } // SDC2
             63 => {
                 // SD
                 if self.reg_size == RegSize::Reg32 {
