@@ -18,6 +18,8 @@ use crate::processors::vr4300::disassembler::Disassembler;
 const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-roms/vr4300-thar0/");
 const TEST_ROM_SIZE: usize = 8 * MB;
 
+const DEBUG_MAX: usize = 100_000_000;
+
 /// Translate a KSEG0 or KSEG1 virtual address to physical address space.
 fn translate_vaddr_simple(vaddr: u32) -> u32 {
     match vaddr {
@@ -152,8 +154,8 @@ fn run_bin_test(test_file: &str) {
     for j in 0..MAX_INSTRUCTIONS {
         let instr = bus.read32(translate_vaddr_simple(cpu.pc as u32));
 
-        if j < 150 {
-            // println!("0x{:08X}: {}", cpu.pc as u32, Disassembler::instruction_string(cpu.pc, instr));
+        if j < DEBUG_MAX {
+            println!("0x{:08X}: {}", cpu.pc as u32, Disassembler::instruction_string(cpu.pc, instr));
         }
 
         if is_jr_instr(instr) {
