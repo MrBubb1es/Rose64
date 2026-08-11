@@ -399,7 +399,7 @@ impl CpuVR4300 {
                     let rt = self.gpr[instr.rt as usize] as u32;
                     let sum = rs.wrapping_add(rt);
 
-                    self.gpr[instr.rd as usize] = sum as u64;
+                    self.gpr[instr.rd as usize] = sum as i32 as u64;
                 }
                 34 => {
                     // SUB
