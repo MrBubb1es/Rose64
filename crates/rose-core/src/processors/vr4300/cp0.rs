@@ -1,3 +1,5 @@
+use crate::processors::vr4300::CpuException;
+
 #[derive(Default)]
 pub struct Cp0 {
     regs: [u64; 32],
@@ -57,4 +59,18 @@ impl Cp0 {
     pub fn set_tag_lo(&mut self, value: u32)       { self.regs[28] = value as u64; }
     pub fn set_tag_hi(&mut self, value: u32)       { self.regs[29] = value as u64; }
     pub fn set_error_epc(&mut self, value: u64)    { self.regs[24] = value; }
+
+    pub fn read(&self, idx: usize) -> u64 {
+        match idx {
+            1 => rand::random_range(self.wired() as u64 & 0x1F..=0x1F),
+            _ => self.regs[idx],
+        }
+    }
+
+    pub fn write32(&mut self, idx: usize, val: u32) -> Result<(), CpuException> {
+        match idx {
+            _ => self.regs[idx] = val as u64,
+        }
+        Ok(())
+    }
 }

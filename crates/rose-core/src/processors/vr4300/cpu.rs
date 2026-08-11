@@ -270,7 +270,7 @@ impl CpuVR4300 {
                 }
                 26 => {
                     // DIV
-                    // 
+                    //
                     // DIV HARDWARE BUG:
                     //   Acts as a 32-bit by 35-bit signed division, affecting
                     //   results when registers are not properly sign extended
@@ -287,10 +287,7 @@ impl CpuVR4300 {
                     let rt_sign_ext = (rt << 29) >> 29;
 
                     let (q, r) = if rt == 0 {
-                        (
-                            if rs < 0 { 1 } else { -1 },
-                            rs,
-                        )
+                        (if rs < 0 { 1 } else { -1 }, rs)
                     } else {
                         (rs / rt_sign_ext, rs % rt_sign_ext)
                     };
@@ -349,10 +346,7 @@ impl CpuVR4300 {
 
                     // TODO: Maybe rose_unlikely
                     let (q, r) = if rt == 0 {
-                        (
-                            if rs < 0 { 1 } else { -1 },
-                            rs as i64,
-                        )
+                        (if rs < 0 { 1 } else { -1 }, rs as i64)
                     } else {
                         ((rs / rt) as i64, (rs % rt) as i64)
                     };
@@ -395,8 +389,8 @@ impl CpuVR4300 {
                     // ADDU
                     let instr = RTypeInstruction::from_raw(i);
 
-                    let rs = self.gpr[instr.rs as usize] as u32;
-                    let rt = self.gpr[instr.rt as usize] as u32;
+                    let rs = self.gpr[instr.rs as usize] as i32;
+                    let rt = self.gpr[instr.rt as usize] as i32;
                     let sum = rs.wrapping_add(rt);
 
                     self.gpr[instr.rd as usize] = sum as i32 as u64;
@@ -858,7 +852,22 @@ impl CpuVR4300 {
                 self.gpr[instr.rt as usize] = val;
             }
             16 => {
-                todo!("Instruction COP0")
+                // COP0
+                let instr = RTypeInstruction::from_raw(i);
+                let cop_instr = instr.rs;
+                match cop_instr {
+                    0 => {
+                        // MFC0
+                        let val = self.cp0.read(instr.rd as usize);
+                        self.gpr[instr.rt as usize] = val;
+                    }
+                    4 => {
+                        // MTC0
+                        let rt = self.gpr[instr.rt as usize];
+                        self.cp0.write32(instr.rd as usize, rt as u32)?
+                    }
+                    _ => panic!("Unrecognized COP0 instruction"),
+                }
             } // COP0
             17 => {
                 todo!("Instruction COP1")
@@ -1313,7 +1322,10 @@ impl CpuVR4300 {
                 let value = self.gpr[instr.rt as usize];
                 self.write64(bus, vaddr, value)?;
             }
-            _ => panic!("Unrecogized opcode: {opcode}"),
+            _ => {
+                println!("Unrecognized instr: {i:04X}, opcode: {opcode}");
+                // panic!("Unrecogized opcode: {opcode}")
+            }
         }
 
         self.gpr[Self::ZR] = 0; // TODO: Move this to execute_instruction caller
