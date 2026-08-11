@@ -3703,8 +3703,12 @@ mod load_store_instructions {
         for byte in 0..4u32 {
             let shift = 8 * (3 - byte);
             let mask: u32 = 0xFFFFFFFFu32 >> shift;
-            let merged: u32 = ((rt_in as u32) & !mask) | (word >> shift);
-            let expected: u64 = (merged as i32) as i64 as u64;
+            // Sign extend only if loading a full 32-bit value
+            let expected: u64 = if byte == 3 {
+                (((rt_in as u32) & !mask) | (word >> shift)) as i32 as u64
+            } else {
+                (rt_in & !(mask as u64)) | ((word as u64) >> shift)
+            };
 
             test_load_instr(
                 "LWR",
